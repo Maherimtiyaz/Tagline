@@ -181,7 +181,7 @@ const PRESETS: Preset[] = [
       },
       summary: {
         title: 'Decision summary',
-        body: 'Context chose PostgreSQL for the billing service. The data model is relational (customers → invoices → line items) and money requires transactions; MongoDB's schema flexibility doesn't offset the cost of join logic and weaker integrity guarantees. Variable webhook payloads are handled with JSONB. Revisit if event volume passes 50k/day.',
+        body: "Context chose PostgreSQL for the billing service. The data model is relational (customers → invoices → line items) and money requires transactions; MongoDB's schema flexibility doesn't offset the cost of join logic and weaker integrity guarantees. Variable webhook payloads are handled with JSONB. Revisit if event volume passes 50k/day.",
       },
     },
   },
@@ -279,10 +279,6 @@ export function analyzeThought(text: string): TransformResult {
 }
 
 /* ---------- Generation ---------- */
-
-function sentences(body: string): string[] {
-  return body.split(/\n/)
-}
 
 /** Apply a tone rewrite deterministically to generated copy (spec §28). */
 export function retune(body: string, tone: ToneId): string {

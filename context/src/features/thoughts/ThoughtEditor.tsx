@@ -7,12 +7,12 @@ import { analyzeThought } from '../../lib/mockAI'
 import { OUTPUT_TYPES, STAGE_COPY, STAGE_ORDER } from '../../lib/outputMeta'
 import { useTransformPipeline } from '../../hooks/useTransformPipeline'
 import { useReducedMotion } from '../../hooks/useReducedMotion'
-import { ContextPanelBody } from '../ui/ContextChip'
+import { ContextPanelBody } from '../../components/ui/ContextChip'
 import { StageRail, ThoughtScatter, Waveform } from '../../animations/Transformation'
-import { OutputEditor } from '../ui/OutputEditor'
+import { OutputEditor } from '../../components/ui/OutputEditor'
 import { VoiceCapture } from '../voice/VoiceCapture'
 import { cn } from '../../lib/cn'
-import { Kbd } from '../ui/Kbd'
+import { Kbd } from '../../components/ui/Kbd'
 
 /* ============================================================
    ThoughtEditor — the focused workspace flow:

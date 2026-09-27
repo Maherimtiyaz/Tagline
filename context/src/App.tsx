@@ -8,6 +8,19 @@ import { Badge } from './components/ui/Badge'
 import { Input } from './components/ui/Input'
 import { SkeletonText } from './components/ui/Skeleton'
 import { useThemeStore } from './lib/theme'
+import { useNavigate } from 'react-router-dom'
+import { AppShell } from './components/layout/AppShell'
+import { CommandPalette } from './components/ui/CommandPalette'
+import { ToastViewport } from './components/ui/Toast'
+import {
+  InboxRoute,
+  EditorRoute,
+  HistoryRoute,
+  TemplatesRoute,
+  SettingsRoute,
+  CollectionsRoute,
+  DemoRoute,
+} from './features/app/AppRoutes'
 
 /* ------------------------------------------------------------------ */
 /* Placeholder pages — replaced by real screens in later build phases. */
@@ -23,10 +36,6 @@ function ComingSoon({ title, phase }: { title: string; phase: string }) {
       <Link to="/" className="text-sm text-accent hover:underline">Back to landing</Link>
     </main>
   )
-}
-
-function Placeholder({ title, phase }: { title: string; phase: string }) {
-  return <ComingSoon title={title} phase={phase} />
 }
 
 /* ------------------------------------------------------------------ */
@@ -173,16 +182,44 @@ function LandingPage() {
   )
 }
 
+/* ------------------------------------------------------------------ */
+/* Global overlays + routed app screens                                */
+/* ------------------------------------------------------------------ */
+function Shell({ children }: { children: React.ReactNode }) {
+  return <AppShell>{children}</AppShell>
+}
+
+function Overlays() {
+  const navigate = useNavigate()
+  return (
+    <>
+      <CommandPalette onNavigate={navigate} />
+      <ToastViewport />
+    </>
+  )
+}
+
 export default function App() {
   return (
-    <Routes>
-      <Route path="/" element={<LandingPage />} />
-      <Route path="/demo" element={<Placeholder title="Product Demo" phase="Phase 2" />} />
-      <Route path="/app" element={<Placeholder title="Workspace" phase="Phase 3" />} />
-      <Route path="/app/history" element={<Placeholder title="History" phase="Phase 6" />} />
-      <Route path="/templates" element={<Placeholder title="Templates" phase="Phase 6" />} />
-      <Route path="/mobile" element={<Placeholder title="Mobile" phase="Phase 7" />} />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <>
+      <Routes>
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/demo" element={<DemoRoute />} />
+        <Route path="/templates" element={<TemplatesRoute />} />
+        <Route path="/app" element={<Shell><InboxRoute /></Shell>} />
+        <Route path="/app/new" element={<Shell><EditorRoute /></Shell>} />
+        <Route path="/app/thought/:id" element={<Shell><EditorRoute /></Shell>} />
+        <Route path="/app/workspace" element={<Shell><InboxRoute /></Shell>} />
+        <Route path="/app/drafts" element={<Shell><InboxRoute /></Shell>} />
+        <Route path="/app/history" element={<Shell><HistoryRoute /></Shell>} />
+        <Route path="/app/templates" element={<Shell><TemplatesRoute /></Shell>} />
+        <Route path="/app/collections" element={<Shell><CollectionsRoute /></Shell>} />
+        <Route path="/app/collections/:id" element={<Shell><CollectionsRoute /></Shell>} />
+        <Route path="/app/settings" element={<Shell><SettingsRoute /></Shell>} />
+        <Route path="/mobile" element={<DemoRoute />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+      <Overlays />
+    </>
   )
 }
