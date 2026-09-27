@@ -1,0 +1,266 @@
+import { useMemo, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { ArrowLeft, Check, ChevronRight, Loader2, Mic, Wand2, X } from 'lucide-react'
+import type { OutputType } from '../../data/types'
+import { useAppStore } from '../../lib/store'
+import { analyzeThought } from '../../lib/mockAI'
+import { OUTPUT_TYPES, STAGE_COPY, STAGE_ORDER } from '../../lib/outputMeta'
+import { useTransformPipeline } from '../../hooks/useTransformPipeline'
+import { useReducedMotion } from '../../hooks/useReducedMotion'
+import { ContextPanelBody } from '../ui/ContextChip'
+import { StageRail, ThoughtScatter, Waveform } from '../../animations/Transformation'
+import { OutputEditor } from '../ui/OutputEditor'
+import { VoiceCapture } from '../voice/VoiceCapture'
+import { cn } from '../../lib/cn'
+import { Kbd } from '../ui/Kbd'
+
+/* ============================================================
+   ThoughtEditor — the focused workspace flow:
+   capture → understand (stages) → choose transformation →
+   output. ESC closes; ⌘↵ runs the suggested transform.
+   ============================================================ */
+
+export function ThoughtEditor({ thoughtId, onClose }: { thoughtId: string; onClose: () => void }) {
+  const thought = useAppStore((s) => s.thoughts.find((t) => t.id === thoughtId))
+  const updateText = useAppStore((s) => s.updateThoughtText)
+  const addThought = useAppStore((s) => s.addThought)
+  const transform = useAppStore((s) => s.transform)
+  const reduced = useReducedMotion()
+  const pipeline = useTransformPipeline(reduced)
+  const [phase, setPhase] = useState<'raw' | 'decompose' | 'structured'>('raw')
+  const [chosen, setChosen] = useState<OutputType | null>(null)
+  const [outputId, setOutputId] = useState<string | null>(null)
+  const [voiceOpen, setVoiceOpen] = useState(false)
+
+  const result = useMemo(() => (thought?.text ? analyzeThought(thought.text) : null), [thought?.text])
+  const running = pipeline.stage !== 'idle' && pipeline.stage !== 'ready'
+  const output = thought?.outputs.find((o) => o.id === outputId) ?? thought?.outputs[0]
+
+  if (!thought) return null
+
+  const runUnderstand = (type?: OutputType) => {
+    const target = type ?? result?.suggestions[0]?.type ?? 'email'
+    setChosen(target)
+    setOutputId(null)
+    pipeline.run(() => {
+      const out = transform(thought.id, target)
+      setOutputId(out.id)
+    })
+    if (!reduced) {
+      window.setTimeout(() => setPhase('decompose'), 420)
+      window.setTimeout(() => setPhase('structured'), 1080)
+    } else {
+      setPhase('structured')
+    }
+  }
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault()
+      if (thought.text.trim()) runUnderstand()
+    }
+    if (e.key === 'Escape') {
+      if (pipeline.stage === 'ready') { pipeline.reset(); setPhase('raw'); setChosen(null) }
+      else onClose()
+    }
+  }
+
+  return (
+    <motion.section
+      initial={reduced ? false : { opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.28, ease: [0.21, 0.6, 0.35, 1] }}
+      onKeyDown={onKeyDown}
+      aria-label="Thought editor"
+      className="flex h-full min-h-0 flex-col"
+    >
+      {/* header */}
+      <header className="flex shrink-0 items-center gap-3 border-b border-line px-4 py-3">
+        <button type="button" onClick={onClose} className="flex items-center gap-1 rounded-md px-1.5 py-1 text-xs text-ink-subtle transition-colors hover:bg-surface-hover hover:text-ink">
+          <ArrowLeft size={14} aria-hidden /> Inbox
+        </button>
+        <span className="h-4 w-px bg-line" aria-hidden />
+        <p className="font-mono text-3xs text-ink-faint">
+          {thought.source} · {new Date(thought.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        </p>
+        <div className="ml-auto flex items-center gap-2">
+          {pipeline.stage === 'ready' && (
+            <button type="button" onClick={() => { pipeline.reset(); setPhase('raw'); setChosen(null) }} className="rounded-md border border-line px-2 py-1 text-2xs text-ink-muted hover:border-line-strong hover:text-ink">
+              Transform again
+            </button>
+          )}
+          <button type="button" onClick={onClose} aria-label="Close editor" className="rounded-md p-1 text-ink-subtle hover:bg-surface-hover hover:text-ink">
+            <X size={15} aria-hidden />
+          </button>
+        </div>
+      </header>
+
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {pipeline.stage === 'idle' && !output && (
+          /* ---------- CAPTURE STATE ---------- */
+          <div className="mx-auto max-w-2xl space-y-6 p-6">
+            <div>
+              <label htmlFor="thought-input" className="label-mono mb-2 block">Your thought</label>
+              <textarea
+                id="thought-input"
+                autoFocus
+                value={thought.text}
+                onChange={(e) => updateText(thought.id, e.target.value)}
+                rows={7}
+                spellCheck={false}
+                placeholder="Dump it however it comes out. Incomplete sentences are fine."
+                className="w-full resize-none rounded-xl border border-line bg-canvas-deep p-4 font-mono text-base leading-relaxed text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none"
+              />
+              <div className="mt-1.5 flex items-center justify-between">
+                <p className="font-mono text-3xs text-ink-faint">{thought.text.length} chars</p>
+                <button
+                  type="button"
+                  onClick={() => setVoiceOpen((v) => !v)}
+                  className="flex items-center gap-1.5 rounded-md border border-line px-2 py-1 text-2xs text-ink-muted transition-colors hover:border-accent-line hover:text-accent"
+                  aria-expanded={voiceOpen}
+                >
+                  <Mic size={12} aria-hidden /> Hold to speak
+                </button>
+              </div>
+              <AnimatePresence>
+                {voiceOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.25 }} className="overflow-hidden"
+                  >
+                    <div className="pt-3">
+                      <VoiceCapture
+                        compact
+                        seed={thought.id.length}
+                        onComplete={(t) => { updateText(thought.id, t); setVoiceOpen(false) }}
+                      />
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* contextual transform actions, not a dropdown */}
+            <div>
+              <p className="label-mono mb-2">Transform into</p>
+              {result && result.suggestions.length > 0 && thought.text.trim() ? (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {result.suggestions.map((sug, i) => (
+                    <button
+                      key={sug.type + i}
+                      type="button"
+                      onClick={() => runUnderstand(sug.type)}
+                      disabled={!thought.text.trim()}
+                      className={cn(
+                        'group flex items-center gap-3 rounded-lg border p-3 text-left transition-colors duration-[var(--duration-fast)]',
+                        i === 0 ? 'border-accent-line bg-accent-soft hover:bg-accent-soft/70' : 'border-line bg-surface hover:border-line-strong',
+                        !thought.text.trim() && 'pointer-events-none opacity-45',
+                      )}
+                    >
+                      <Wand2 size={15} className={i === 0 ? 'text-accent' : 'text-ink-faint'} aria-hidden />
+                      <span className="flex-1">
+                        <span className="block text-sm font-medium">{sug.label}</span>
+                        <span className="font-mono text-3xs text-ink-faint">
+                          confidence {(sug.confidence * 100).toFixed(0)}%
+                        </span>
+                      </span>
+                      <ChevronRight size={14} className="text-ink-faint transition-transform group-hover:translate-x-0.5" aria-hidden />
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {OUTPUT_TYPES.slice(0, 6).map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => { if (!thought.text.trim()) { const id = addThought(`New ${t.label.toLowerCase()} thought`); transform(id, t.id); onClose() } else runUnderstand(t.id) }}
+                      className="rounded-lg border border-line bg-surface px-3 py-2.5 text-sm text-ink-muted transition-colors hover:border-line-strong hover:text-ink"
+                    >
+                      {t.label}
+                      <span className="ml-2 font-mono text-3xs text-ink-faint">{t.command}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <p className="mt-3 flex items-center gap-2 text-2xs text-ink-faint">
+                or press <Kbd keys={['⌘', '↵']} /> to run the top suggestion
+              </p>
+            </div>
+          </div>
+        )}
+
+        {(running || pipeline.stage === 'understanding') && (
+          /* ---------- UNDERSTANDING STATE ---------- */
+          <div className="mx-auto grid max-w-4xl gap-8 p-6 md:grid-cols-[1fr_auto_1fr]">
+            <div>
+              <p className="label-mono mb-3">Raw thought</p>
+              <ThoughtScatter
+                text={thought.text}
+                understanding={result!.understanding}
+                phase={phase}
+              />
+            </div>
+            <div className="hidden w-px bg-line md:block" aria-hidden />
+            <div className="space-y-4">
+              <p className="label-mono">Context is reading it</p>
+              <StageRail stages={STAGE_ORDER} currentIndex={pipeline.stageIndex} labels={STAGE_COPY} />
+              {phase !== 'raw' && (
+                <>
+                  <p className="label-mono pt-2">Extracted</p>
+                  <ContextPanelBody u={result!.understanding} />
+                </>
+              )}
+              <div className="flex justify-center pt-2">
+                <Waveform active bars={16} />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {pipeline.stage === 'ready' && output && chosen && (
+          /* ---------- OUTPUT STATE ---------- */
+          <div className="grid h-full min-h-0 gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="min-h-[60vh] lg:min-h-0">
+              <OutputEditor thoughtId={thought.id} output={output} />
+            </div>
+            <aside className="hidden min-h-0 overflow-y-auto rounded-xl border border-line bg-surface p-4 lg:block" aria-label="Extracted context">
+              <div className="mb-3 flex items-center gap-2">
+                <Check size={13} className="text-emerald" aria-hidden />
+                <p className="label-mono">Understanding</p>
+              </div>
+              <ContextPanelBody u={analyzeThought(thought.text).understanding} />
+              <p className="label-mono mt-6 mb-2">Original thought</p>
+              <p className="font-mono text-2xs leading-relaxed text-ink-subtle">"{thought.text}"</p>
+            </aside>
+          </div>
+        )}
+
+        {pipeline.stage === 'error' && (
+          <div className="mx-auto max-w-md p-10 text-center">
+            <p className="text-sm text-coral">Something interrupted the transformation.</p>
+            <div className="mt-4 flex justify-center gap-2">
+              <button type="button" onClick={() => runUnderstand(chosen ?? undefined)} className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-accent-ink">Try again</button>
+              <button type="button" onClick={() => { pipeline.reset(); setPhase('raw') }} className="rounded-md border border-line px-3 py-1.5 text-sm text-ink-muted hover:border-line-strong">Edit thought</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {running && (
+        <div className="h-0.5 w-full shrink-0 overflow-hidden bg-line" role="progressbar" aria-label={STAGE_COPY[pipeline.stage]}>
+          <motion.div
+            className="h-full bg-accent"
+            initial={{ width: '8%' }}
+            animate={{ width: `${20 + pipeline.stageIndex * 20}%` }}
+            transition={{ duration: 0.3 }}
+          />
+        </div>
+      )}
+      {pipeline.stage === 'writing' && (
+        <p className="sr-only" aria-live="polite">Writing draft</p>
+      )}
+      <Loader2 className="hidden" aria-hidden />
+    </motion.section>
+  )
+}

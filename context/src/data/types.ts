@@ -1,0 +1,132 @@
+/* ============================================================
+   CONTEXT — domain types (shared by mock AI engine + UI)
+   ============================================================ */
+
+export type SourceType = 'voice' | 'text' | 'screenshot' | 'import'
+
+export type ThoughtStatus = 'raw' | 'processed' | 'archived'
+
+export type OutputType =
+  | 'email'
+  | 'plan'
+  | 'tasks'
+  | 'summary'
+  | 'brief'
+  | 'post'
+  | 'decision'
+  | 'slack'
+
+export type ToneId =
+  | 'professional'
+  | 'friendly'
+  | 'concise'
+  | 'confident'
+  | 'casual'
+  | 'persuasive'
+
+/** The staged transformation pipeline (spec §26). */
+export type TransformStage =
+  | 'idle'
+  | 'understanding'
+  | 'intent'
+  | 'structuring'
+  | 'writing'
+  | 'ready'
+  | 'error'
+
+export interface Entity {
+  label: string
+  value: string
+}
+
+/** What the (simulated) engine extracts from a raw thought. */
+export interface Understanding {
+  intent: string
+  context: string
+  tone: ToneId
+  people: string[]
+  dates: string[]
+  tasks: string[]
+  topics: string[]
+  actions: string[]
+}
+
+export interface GeneratedOutput {
+  id: string
+  type: OutputType
+  title: string
+  subject?: string
+  body: string
+  createdAt: number
+  tone: ToneId
+}
+
+export interface Suggestion {
+  type: OutputType
+  label: string
+  confidence: number /* 0..1 */
+}
+
+export interface Thought {
+  id: string
+  text: string
+  source: SourceType
+  createdAt: number
+  status: ThoughtStatus
+  understanding?: Understanding
+  outputs: GeneratedOutput[]
+  collectionId?: string
+}
+
+/* ---------- History / timeline ---------- */
+
+export type TimelineKind =
+  | 'capture'
+  | 'transform'
+  | 'tone'
+  | 'format'
+  | 'copy'
+  | 'save'
+  | 'export'
+  | 'archive'
+
+export interface TimelineEvent {
+  id: string
+  thoughtId: string
+  at: number
+  kind: TimelineKind
+  label: string
+  detail?: string
+}
+
+/* ---------- Templates & collections ---------- */
+
+export interface TemplateField {
+  key: string
+  label: string
+  placeholder: string
+  multiline?: boolean
+}
+
+export interface Template {
+  id: string
+  name: string
+  description: string
+  outputType: OutputType
+  fields: TemplateField[]
+  example: string
+}
+
+export interface Collection {
+  id: string
+  name: string
+  description: string
+  color: 'accent' | 'blue' | 'emerald' | 'amber' | 'coral' | 'neutral'
+}
+
+/* ---------- Engine result ---------- */
+
+export interface TransformResult {
+  understanding: Understanding
+  suggestions: Suggestion[]
+}
