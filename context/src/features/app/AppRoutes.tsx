@@ -4,7 +4,6 @@ import { HistoryPage, CollectionsPage } from '../workspace/HistoryPage'
 import { TemplatesPage } from '../templates/TemplatesPage'
 import { SettingsPage } from '../settings/SettingsPage'
 import { ThoughtEditor } from '../thoughts/ThoughtEditor'
-import { DemoPage } from '../demo/DemoPage'
 
 /* ============================================================
    Routed app screens. The thought editor is rendered inline in
@@ -39,6 +38,4 @@ export function CollectionsRoute() {
   return <CollectionsPage collectionId={id} />
 }
 
-export function DemoRoute() {
-  return <DemoPage />
-}
+/* DemoRoute removed — /demo is lazy-loaded directly in App.tsx */
