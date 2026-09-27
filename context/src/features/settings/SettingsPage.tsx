@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Keyboard, Moon, RotateCcw, Sun } from 'lucide-react'
 import { useAppStore } from '../../lib/store'
-import { useThemeStore } from '../../lib/theme'
+import { useThemeStore, type Theme } from '../../lib/theme'
 import { SegmentedControl } from '../../components/ui/SegmentedControl'
 import { Kbd } from '../../components/ui/Kbd'
 import { cn } from '../../lib/cn'
@@ -43,16 +43,15 @@ export function SettingsPage({ inApp = true }: { inApp?: boolean }) {
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface p-4">
             <div>
               <p className="text-sm font-medium">Theme</p>
-              <p className="text-xs text-ink-muted">System follows your OS preference.</p>
+              <p className="text-xs text-ink-muted">Light and dark — both tuned by hand.</p>
             </div>
             <SegmentedControl
               ariaLabel="Theme"
               value={theme}
-              onChange={(v) => setTheme(v as 'light' | 'dark' | 'system')}
+              onChange={(v) => setTheme(v as Theme)}
               options={[
                 { value: 'light', label: 'Light' },
                 { value: 'dark', label: 'Dark' },
-                { value: 'system', label: 'System' },
               ]}
             />
           </div>
