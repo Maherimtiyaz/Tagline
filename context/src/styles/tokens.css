@@ -1,0 +1,265 @@
+/* ============================================================
+   CONTEXT — Design Tokens
+   Single source of truth for color, spacing, type, radii,
+   shadows, motion and z-index. Components must reference these
+   via Tailwind theme utilities (bg-canvas, text-ink ...) or the
+   raw custom properties. Never hard-code values in components.
+   ============================================================ */
+
+@theme {
+  /* ---------- Typography ---------- */
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* Refined app scale (compact, professional) */
+  --text-3xs: 0.625rem;      /* 10px — mono metadata          */
+  --text-3xs--line-height: 0.875rem;
+  --text-2xs: 0.6875rem;     /* 11px — labels, badges         */
+  --text-2xs--line-height: 1rem;
+  --text-xs: 0.75rem;        /* 12px                          */
+  --text-xs--line-height: 1.125rem;
+  --text-sm: 0.8125rem;      /* 13px — default UI size        */
+  --text-sm--line-height: 1.25rem;
+  --text-base: 0.875rem;     /* 14px — body in editors        */
+  --text-base--line-height: 1.375rem;
+  --text-lg: 1rem;           /* 16px                          */
+  --text-lg--line-height: 1.5rem;
+  --text-xl: 1.125rem;       /* 18px                          */
+  --text-xl--line-height: 1.625rem;
+  --text-2xl: 1.375rem;      /* 22px                          */
+  --text-2xl--line-height: 1.75rem;
+  --text-3xl: 1.75rem;       /* 28px                          */
+  --text-3xl--line-height: 2.125rem;
+  --text-4xl: 2.25rem;       /* 36px                          */
+  --text-4xl--line-height: 2.625rem;
+  --text-5xl: 3rem;          /* 48px — landing subheads       */
+  --text-5xl--line-height: 3.375rem;
+  --text-6xl: 4rem;          /* 64px — landing hero           */
+  --text-6xl--line-height: 4.125rem;
+
+  /* ---------- Radii ---------- */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+  --radius-full: 9999px;
+
+  /* ---------- Motion (durations) ---------- */
+  --duration-micro: 140ms;   /* hover / press feedback        */
+  --duration-fast: 200ms;    /* normal transitions            */
+  --duration-med: 280ms;     /* panels, drawers               */
+  --duration-slow: 450ms;    /* signature transformations     */
+
+  /* ---------- Z-index ---------- */
+  --z-raised: 1;
+  --z-nav: 40;
+  --z-drawer: 60;
+  --z-modal: 70;
+  --z-popover: 80;           /* dropdowns, tooltips           */
+  --z-toast: 90;
+}
+
+/* ============================================================
+   Semantic palettes. Light is the root; .dark overrides.
+   Warm minimalism: off-white + graphite, violet used sparingly.
+   ============================================================ */
+:root {
+  --color-canvas: #faf9f7;        /* warm off-white page bg     */
+  --color-canvas-deep: #f2f0ec;   /* wells, inputs              */
+  --color-surface: #ffffff;       /* cards, panels              */
+  --color-surface-hover: #f6f5f2;
+  --color-line: #e6e3dd;          /* 1px borders                */
+  --color-line-strong: #d6d2ca;
+
+  --color-ink: #1b1a18;           /* primary text (graphite)    */
+  --color-ink-muted: #5c5850;     /* secondary text             */
+  --color-ink-subtle: #8a857b;    /* tertiary / metadata        */
+  --color-ink-faint: #b5b0a6;     /* disabled                   */
+
+  --color-accent: #5b45e0;        /* deep violet (AA on white)  */
+  --color-accent-hover: #4a36cc;
+  --color-accent-soft: rgba(91, 69, 224, 0.08);
+  --color-accent-line: rgba(91, 69, 224, 0.28);
+  --color-accent-ink: #ffffff;
+
+  --color-blue: #2f6fed;          /* secondary accent           */
+  --color-blue-soft: rgba(47, 111, 237, 0.09);
+  --color-emerald: #0a7d54;       /* success                    */
+  --color-emerald-soft: rgba(10, 125, 84, 0.09);
+  --color-amber: #a16207;         /* warning                    */
+  --color-amber-soft: rgba(161, 98, 7, 0.10);
+  --color-coral: #cf3d2e;         /* error                      */
+  --color-coral-soft: rgba(207, 61, 46, 0.08);
+
+  --shadow-sm: 0 1px 2px rgba(27, 26, 24, 0.05);
+  --shadow-md: 0 4px 16px rgba(27, 26, 24, 0.07);
+  --shadow-lg: 0 12px 40px rgba(27, 26, 24, 0.10);
+
+  --ease-out-soft: cubic-bezier(0.21, 0.6, 0.35, 1);
+  --ease-in-out-soft: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dark {
+  --color-canvas: #0b0c0f;        /* near-black graphite        */
+  --color-canvas-deep: #08090b;
+  --color-surface: #121419;       /* dark gray surfaces         */
+  --color-surface-hover: #181b21;
+  --color-line: #23262e;          /* subtle gray borders        */
+  --color-line-strong: #32363f;
+
+  --color-ink: #f2efea;           /* warm white                 */
+  --color-ink-muted: #9aa0ac;     /* muted gray                 */
+  --color-ink-subtle: #6b7280;
+  --color-ink-faint: #4b5059;
+
+  --color-accent: #7c6cff;        /* electric indigo            */
+  --color-accent-hover: #8d7fff;
+  --color-accent-soft: rgba(124, 108, 255, 0.12);
+  --color-accent-line: rgba(124, 108, 255, 0.35);
+  --color-accent-ink: #0b0c0f;
+
+  --color-blue: #6d9bff;
+  --color-blue-soft: rgba(109, 155, 255, 0.12);
+  --color-emerald: #34d399;
+  --color-emerald-soft: rgba(52, 211, 153, 0.12);
+  --color-amber: #fbbf24;
+  --color-amber-soft: rgba(251, 191, 36, 0.12);
+  --color-coral: #ff7a6b;
+  --color-coral-soft: rgba(255, 122, 107, 0.12);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.55);
+}
+
+/* Map semantic colors into the Tailwind theme so utilities like
+   bg-canvas / text-ink / border-line work in both modes.        */
+@theme inline {
+  --color-canvas: var(--color-canvas);
+  --color-canvas-deep: var(--color-canvas-deep);
+  --color-surface: var(--color-surface);
+  --color-surface-hover: var(--color-surface-hover);
+  --color-line: var(--color-line);
+  --color-line-strong: var(--color-line-strong);
+
+  --color-ink: var(--color-ink);
+  --color-ink-muted: var(--color-ink-muted);
+  --color-ink-subtle: var(--color-ink-subtle);
+  --color-ink-faint: var(--color-ink-faint);
+
+  --color-accent: var(--color-accent);
+  --color-accent-hover: var(--color-accent-hover);
+  --color-accent-soft: var(--color-accent-soft);
+  --color-accent-line: var(--color-accent-line);
+  --color-accent-ink: var(--color-accent-ink);
+
+  --color-blue: var(--color-blue);
+  --color-blue-soft: var(--color-blue-soft);
+  --color-emerald: var(--color-emerald);
+  --color-emerald-soft: var(--color-emerald-soft);
+  --color-amber: var(--color-amber);
+  --color-amber-soft: var(--color-amber-soft);
+  --color-coral: var(--color-coral);
+  --color-coral-soft: var(--color-coral-soft);
+
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+
+  --animate-fade-up: fade-up 300ms var(--ease-out-soft) both;
+  --animate-fade-in: fade-in 200ms var(--ease-out-soft) both;
+  --animate-shimmer: shimmer 1.6s linear infinite;
+  --animate-pulse-dot: pulse-dot 1.4s var(--ease-in-out-soft) infinite;
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 0.35; transform: scale(0.9); }
+  50%      { opacity: 1; transform: scale(1); }
+}
+
+/* ============================================================
+   Base layer
+   ============================================================ */
+@layer base {
+  * { border-color: var(--color-line); }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    font-feature-settings: 'cv05', 'ss01'; /* Inter alternates: single-stroke feel */
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: var(--color-accent-soft);
+    color: var(--color-ink);
+  }
+
+  /* Visible, consistent focus ring (WCAG 2.2) */
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-xs);
+  }
+
+  /* Subtle scrollbars that match the theme */
+  * { scrollbar-width: thin; scrollbar-color: var(--color-line-strong) transparent; }
+  *::-webkit-scrollbar { width: 8px; height: 8px; }
+  *::-webkit-scrollbar-thumb { background: var(--color-line-strong); border-radius: 99px; }
+  *::-webkit-scrollbar-track { background: transparent; }
+
+  /* Reduced motion: remove decorative animation, keep state changes */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* ---------- Shared utility recipes ---------- */
+@utility label-mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-3xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-ink-subtle);
+}
+
+@utility skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-surface) 25%,
+    var(--color-surface-hover) 50%,
+    var(--color-surface) 75%
+  );
+  background-size: 200% 100%;
+  animation: var(--animate-shimmer);
+  border-radius: var(--radius-sm);
+}
