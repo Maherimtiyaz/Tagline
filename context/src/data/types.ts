@@ -57,6 +57,9 @@ export interface GeneratedOutput {
   title: string
   subject?: string
   body: string
+  /** Untoned base text the current body was derived from — lets tone
+   *  switches re-apply without discarding the document. */
+  baseBody?: string
   createdAt: number
   tone: ToneId
 }

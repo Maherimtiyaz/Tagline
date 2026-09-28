@@ -350,6 +350,7 @@ export function generateOutput(
     title: out.title,
     subject: out.subject,
     body,
+    baseBody: out.body,
     createdAt: Date.now(),
     tone,
   }
