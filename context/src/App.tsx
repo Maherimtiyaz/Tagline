@@ -7,6 +7,8 @@ import { LandingPage } from './features/marketing/LandingPage'
 import { MobileApp } from './features/mobile/MobileApp'
 import {
   InboxRoute,
+  WorkspaceRoute,
+  DraftsRoute,
   EditorRoute,
   HistoryRoute,
   TemplatesRoute,
@@ -56,8 +58,8 @@ export default function App() {
           <Route path="/app" element={<Shell><InboxRoute /></Shell>} />
           <Route path="/app/new" element={<Shell><EditorRoute /></Shell>} />
           <Route path="/app/thought/:id" element={<Shell><EditorRoute /></Shell>} />
-          <Route path="/app/workspace" element={<Shell><InboxRoute /></Shell>} />
-          <Route path="/app/drafts" element={<Shell><InboxRoute /></Shell>} />
+          <Route path="/app/workspace" element={<Shell><WorkspaceRoute /></Shell>} />
+          <Route path="/app/drafts" element={<Shell><DraftsRoute /></Shell>} />
           <Route path="/app/history" element={<Shell><HistoryRoute /></Shell>} />
           <Route path="/app/templates" element={<Shell><TemplatesRoute /></Shell>} />
           <Route path="/app/collections" element={<Shell><CollectionsRoute /></Shell>} />

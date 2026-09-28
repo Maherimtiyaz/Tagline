@@ -1,13 +1,15 @@
 import { useState } from 'react'
-import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import {
   Archive,
   Command,
   FileText,
   Inbox as InboxIcon,
   LayoutTemplate,
+  Layers,
   Library,
   Plus,
+  RotateCcw,
   Settings,
   PanelLeftClose,
   PanelLeftOpen,
@@ -21,12 +23,14 @@ import { cn } from '../../lib/cn'
 /* ============================================================
    App shell — collapsible sidebar + routed content. Mobile
    (<768px) swaps the sidebar for a bottom tab bar; this same
-   layout wraps /app/* routes.
+   layout wraps /app/* routes. A quiet DEMO MODE pill with a
+   one-click reset lives at the top of the main column (§57).
    ============================================================ */
 
 const NAV = [
   { to: '/app', label: 'Inbox', icon: InboxIcon, end: true },
-  { to: '/app/workspace', label: 'Workspace', icon: FileText, end: false },
+  { to: '/app/workspace', label: 'Workspace', icon: Layers, end: false },
+  { to: '/app/drafts', label: 'Drafts', icon: FileText, end: false },
   { to: '/app/history', label: 'History', icon: Archive, end: false },
   { to: '/app/templates', label: 'Templates', icon: LayoutTemplate, end: false },
   { to: '/app/collections', label: 'Collections', icon: Library, end: false },
@@ -40,20 +44,26 @@ const MOBILE_NAV = [
   { to: '/app/settings', label: 'Settings', icon: Settings, end: false },
 ]
 
+/** Which nav entry a pathname belongs to (thought editor → Inbox). */
+function navActive(pathname: string, to: string, end: boolean) {
+  const effective = pathname.startsWith('/app/thought/') || pathname === '/app/new' ? '/app' : pathname
+  return end ? effective === to : effective === to || effective.startsWith(to + '/')
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false)
   const thoughts = useAppStore((s) => s.thoughts)
   const setPalette = useAppStore((s) => s.setPalette)
+  const resetDemo = useAppStore((s) => s.resetDemo)
   const theme = useThemeStore((s) => s.theme)
   const toggleTheme = useThemeStore((s) => s.toggleTheme)
   const navigate = useNavigate()
   const location = useLocation()
-  const { id } = useParams()
 
   const rawCount = thoughts.filter((t) => t.status === 'raw').length
+  const draftCount = thoughts.filter((t) => t.status !== 'archived' && (t.text.trim() === '' || (t.status === 'raw' && t.outputs.length === 0))).length
 
-  const isActive = (to: string, end: boolean) =>
-    end ? location.pathname === to || (!!id && to === '/app') : location.pathname.startsWith(to)
+  const isActive = (to: string, end: boolean) => navActive(location.pathname, to, end)
 
   return (
     <div className="flex h-dvh overflow-hidden">
@@ -121,6 +131,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               {!collapsed && n.label === 'Inbox' && rawCount > 0 && (
                 <span className="rounded-full bg-accent-soft px-1.5 py-px font-mono text-3xs text-accent">{rawCount}</span>
               )}
+              {!collapsed && n.label === 'Drafts' && draftCount > 0 && (
+                <span className="font-mono text-3xs text-ink-faint">{draftCount}</span>
+              )}
             </button>
           ))}
 
@@ -180,7 +193,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* ---------- Main ---------- */}
-      <main className="flex min-w-0 flex-1 flex-col pb-14 md:pb-0">{children}</main>
+      <main className="flex min-w-0 flex-1 flex-col pb-14 md:pb-0">
+        {/* Portfolio-mode indicator — quiet, one line, one action (spec §57) */}
+        <div className="flex h-7 shrink-0 items-center gap-2 border-b border-line bg-canvas-deep px-3 md:px-6" role="status">
+          <span className="h-1.5 w-1.5 rounded-full bg-amber" aria-hidden />
+          <span className="font-mono text-3xs uppercase tracking-[0.14em] text-ink-subtle">Demo mode</span>
+          <span className="hidden font-mono text-3xs text-ink-faint sm:inline">all data is local · nothing is sent anywhere</span>
+          <button
+            type="button"
+            onClick={resetDemo}
+            className="ml-auto flex h-5 items-center gap-1 rounded border border-line px-1.5 font-mono text-3xs text-ink-muted transition-colors hover:border-line-strong hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
+            aria-label="Reset demo to its initial state"
+          >
+            <RotateCcw size={9} aria-hidden /> Reset demo
+          </button>
+        </div>
+        <div className="min-h-0 flex-1">{children}</div>
+      </main>
 
       {/* ---------- Bottom nav (mobile) ---------- */}
       <nav

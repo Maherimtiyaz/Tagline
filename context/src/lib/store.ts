@@ -20,20 +20,27 @@ export interface Toast {
   tone?: 'success' | 'info' | 'error'
 }
 
+/** Which inbox view the list screen renders (spec §18 sidebar). */
+export type InboxView = 'inbox' | 'workspace' | 'drafts'
+
 interface AppState {
   thoughts: Thought[]
   timeline: TimelineEvent[]
   selectedThoughtId: string | null
   paletteOpen: boolean
   toasts: Toast[]
+  inboxView: InboxView
 
   /* derived helpers */
   select: (id: string | null) => void
   setPalette: (open: boolean) => void
+  setInboxView: (view: InboxView) => void
 
   addThought: (text: string, source?: Thought['source']) => string
   updateThoughtText: (id: string, text: string) => void
+  deleteThought: (id: string) => void
   archiveThought: (id: string) => void
+  unarchiveThought: (id: string) => void
 
   /** Run understanding for a thought (stage-2 data only; UI animates stages). */
   understand: (id: string) => void
@@ -61,9 +68,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectedThoughtId: null,
   paletteOpen: false,
   toasts: [],
+  inboxView: 'inbox',
 
   select: (id) => set({ selectedThoughtId: id }),
   setPalette: (open) => set({ paletteOpen: open }),
+  setInboxView: (view) => set({ inboxView: view }),
 
   addThought: (text, source = 'text') => {
     const id = uid('th')
@@ -102,6 +111,20 @@ export const useAppStore = create<AppState>((set, get) => ({
       ],
     }))
     get().pushToast('Archived', 'info')
+  },
+
+  unarchiveThought: (id) => {
+    set((s) => ({
+      thoughts: s.thoughts.map((t) =>
+        t.id === id ? { ...t, status: (t.outputs.length > 0 ? 'processed' : 'raw') as Thought['status'] } : t,
+      ),
+    }))
+    get().pushToast('Restored to inbox', 'success')
+  },
+
+  deleteThought: (id) => {
+    set((s) => ({ thoughts: s.thoughts.filter((t) => t.id !== id) }))
+    get().pushToast('Draft deleted', 'info')
   },
 
   understand: (id) =>
@@ -231,7 +254,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 
   resetDemo: () => {
-    set({ ...seedState(), selectedThoughtId: null })
+    set({ ...seedState(), selectedThoughtId: null, inboxView: 'inbox' as const })
     get().pushToast('Demo reset to its initial state', 'info')
   },
 }))
