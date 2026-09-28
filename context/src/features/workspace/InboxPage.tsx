@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { CornerDownLeft, Plus, Search, X } from 'lucide-react'
-import { useAppStore } from '../../lib/store'
+import { useAppStore, type InboxView } from '../../lib/store'
 import { useReducedMotion } from '../../hooks/useReducedMotion'
 import { timeAgo } from '../../hooks/useTransformPipeline'
 import { ThoughtCard } from '../../components/ui/ThoughtCard'
@@ -11,9 +11,11 @@ import { Badge } from '../../components/ui/Badge'
 import { cn } from '../../lib/cn'
 
 /* ============================================================
-   Inbox — where raw thoughts live. Global search over thoughts,
-   outputs and templates with highlighted matches (spec §33).
-   "N" focuses the new-thought flow; "/" focuses search.
+   Inbox — where raw thoughts live. One list screen drives three
+   sidebar views (spec §18): Inbox (unprocessed), Workspace
+   (everything active), Drafts (empty or untouched new captures).
+   Global search over thoughts + outputs with highlighted matches
+   (spec §33). "N" focuses the new-thought flow; "/" focuses search.
    ============================================================ */
 
 function Highlight({ text, q }: { text: string; q: string }) {
@@ -29,28 +31,56 @@ function Highlight({ text, q }: { text: string; q: string }) {
   )
 }
 
-export function InboxPage() {
+const VIEW_META: Record<InboxView, { title: string; blurb: string; emptyTitle: string; emptyBody: string }> = {
+  inbox: {
+    title: 'Inbox',
+    blurb: 'thoughts waiting to become something',
+    emptyTitle: 'Inbox zero.',
+    emptyBody: 'Nothing unprocessed. Capture a rough thought and Context will find the shape inside it.',
+  },
+  workspace: {
+    title: 'Workspace',
+    blurb: 'every active thought and its outputs',
+    emptyTitle: 'No thoughts yet.',
+    emptyBody: 'Capture something and Context will help you turn it into something useful.',
+  },
+  drafts: {
+    title: 'Drafts',
+    blurb: 'started, not finished',
+    emptyTitle: 'No drafts.',
+    emptyBody: 'A draft is a thought you captured but never transformed. Press N and start typing — nothing gets lost.',
+  },
+}
+
+export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
   const thoughts = useAppStore((s) => s.thoughts)
   const addThought = useAppStore((s) => s.addThought)
   const select = useAppStore((s) => s.select)
   const transform = useAppStore((s) => s.transform)
+  const deleteThought = useAppStore((s) => s.deleteThought)
   const setPalette = useAppStore((s) => s.setPalette)
   const navigate = useNavigate()
   const reduced = useReducedMotion()
   const [query, setQuery] = useState('')
   const searchRef = useRef<HTMLInputElement>(null)
-  const { id: routeId } = useParams()
 
-  const active = thoughts.filter((t) => t.status !== 'archived')
+  const meta = VIEW_META[view]
+  const nonArchived = thoughts.filter((t) => t.status !== 'archived')
+  const scoped = useMemo(() => {
+    if (view === 'inbox') return nonArchived.filter((t) => t.status === 'raw')
+    if (view === 'workspace') return nonArchived
+    return nonArchived.filter((t) => t.text.trim() === '' || (t.status === 'raw' && t.outputs.length === 0))
+  }, [view, nonArchived])
+
   const results = useMemo(() => {
     if (!query.trim()) return null
     const q = query.toLowerCase()
-    const th = active.filter((t) => t.text.toLowerCase().includes(q))
-    const outs = active.flatMap((t) =>
+    const th = nonArchived.filter((t) => t.text.toLowerCase().includes(q))
+    const outs = nonArchived.flatMap((t) =>
       t.outputs.filter((o) => (o.title + o.body).toLowerCase().includes(q)).map((o) => ({ thought: t, output: o })),
     )
     return { th, outs }
-  }, [query, active])
+  }, [query, nonArchived])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -71,18 +101,22 @@ export function InboxPage() {
     navigate(`/app/thought/${id}`)
   }
 
-  const today = active.filter((t) => Date.now() - t.createdAt < 24 * 3600_000)
-  const earlier = active.filter((t) => Date.now() - t.createdAt >= 24 * 3600_000)
+  const today = scoped.filter((t) => Date.now() - t.createdAt < 24 * 3600_000)
+  const earlier = scoped.filter((t) => Date.now() - t.createdAt >= 24 * 3600_000)
+  const subtitle =
+    view === 'inbox'
+      ? `${scoped.length} unprocessed · demo data`
+      : view === 'drafts'
+        ? `${scoped.length} draft${scoped.length === 1 ? '' : 's'} · demo data`
+        : `${nonArchived.filter((t) => t.status === 'raw').length} unprocessed of ${scoped.length} · demo data`
 
   return (
     <div className="mx-auto flex h-full w-full max-w-3xl flex-col">
       {/* header */}
       <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-line px-4 py-3 md:px-6">
         <div className="min-w-0 flex-1">
-          <h1 className="text-base font-semibold tracking-tight">Inbox</h1>
-          <p className="font-mono text-3xs text-ink-faint">
-            {active.filter((t) => t.status === 'raw').length} unprocessed · demo data
-          </p>
+          <h1 className="text-base font-semibold tracking-tight">{meta.title}</h1>
+          <p className="font-mono text-3xs text-ink-faint">{subtitle}</p>
         </div>
         <label className="relative flex-1 basis-48 md:basis-64">
           <span className="sr-only">Search thoughts and outputs</span>
@@ -117,14 +151,13 @@ export function InboxPage() {
               {results.th.length} thought{results.th.length === 1 ? '' : 's'} · {results.outs.length} output{results.outs.length === 1 ? '' : 's'}
             </p>
             {results.th.map((t) => (
-              <button key={t.id} type="button" onClick={() => navigate(`/app/thought/${t.id}`)} className="block w-full text-left">
-                <ThoughtCard
-                  id={t.id} text={t.text} source={t.source} createdAt={t.createdAt}
-                  status={t.status} outputCount={t.outputs.length}
-                  onOpen={() => navigate(`/app/thought/${t.id}`)}
-                  onTransform={() => { transform(t.id, 'email'); navigate(`/app/thought/${t.id}`) }}
-                />
-              </button>
+              <ThoughtCard
+                key={t.id}
+                id={t.id} text={t.text} source={t.source} createdAt={t.createdAt}
+                status={t.status} outputCount={t.outputs.length}
+                onOpen={() => navigate(`/app/thought/${t.id}`)}
+                onTransform={() => { transform(t.id, 'email'); navigate(`/app/thought/${t.id}`) }}
+              />
             ))}
             {results.outs.map(({ thought, output }) => (
               <button
@@ -145,11 +178,11 @@ export function InboxPage() {
               <EmptyState title="Nothing matches that." body="Try a name, a day of the week, or a word from the thought itself." />
             )}
           </div>
-        ) : active.length === 0 ? (
+        ) : scoped.length === 0 ? (
           /* ---------- EMPTY ---------- */
           <EmptyState
-            title="No thoughts yet."
-            body="Capture something and Context will help you turn it into something useful."
+            title={meta.emptyTitle}
+            body={meta.emptyBody}
             action={
               <button type="button" onClick={onNew} className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-ink hover:bg-accent-hover">
                 Start a thought
@@ -178,12 +211,8 @@ export function InboxPage() {
                             id={t.id} text={t.text} source={t.source} createdAt={t.createdAt}
                             status={t.status} outputCount={t.outputs.length}
                             onOpen={() => navigate(`/app/thought/${t.id}`)}
-                            onTransform={() => {
-                              const first = t.text.trim() ? undefined : undefined
-                              void first
-                              transform(t.id, 'email')
-                              navigate(`/app/thought/${t.id}`)
-                            }}
+                            onTransform={() => { transform(t.id, 'email'); navigate(`/app/thought/${t.id}`) }}
+                            onDelete={view === 'drafts' ? () => deleteThought(t.id) : undefined}
                           />
                         </motion.div>
                       ))}
@@ -199,8 +228,6 @@ export function InboxPage() {
         )}
       </div>
 
-      {/* route param unused but keeps nav highlighting honest */}
-      {routeId ? null : null}
       <button type="button" className="sr-only" onClick={() => setPalette(true)}>Open command palette</button>
     </div>
   )

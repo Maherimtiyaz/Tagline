@@ -29,6 +29,7 @@ export function ThoughtCard({
   outputCount,
   onOpen,
   onTransform,
+  onDelete,
 }: {
   id: string
   text: string
@@ -38,6 +39,8 @@ export function ThoughtCard({
   outputCount: number
   onOpen: () => void
   onTransform: () => void
+  /** When provided (Drafts view), replaces Archive with Delete. */
+  onDelete?: () => void
 }) {
   const archive = useAppStore((s) => s.archiveThought)
   const preview = useMemo(() => (text.length > 150 ? text.slice(0, 150) + '…' : text), [text])
@@ -57,7 +60,7 @@ export function ThoughtCard({
         aria-label={`Open thought: ${preview.slice(0, 60)}`}
       >
         <p className={cn('text-sm leading-relaxed', status === 'archived' ? 'text-ink-faint line-through' : 'text-ink')}>
-          "{preview}"
+          {text.trim() ? `"${preview}"` : <span className="italic text-ink-faint">Empty draft — open it and start typing.</span>}
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
           <span className="font-mono text-3xs text-ink-subtle">{timeAgo(createdAt)}</span>
@@ -78,21 +81,34 @@ export function ThoughtCard({
 
       {/* hover-revealed actions */}
       <div className="absolute right-3 top-3 flex gap-1 opacity-0 transition-opacity duration-[var(--duration-micro)] group-hover:opacity-100 group-focus-within:opacity-100">
-        <button
-          type="button"
-          onClick={onTransform}
-          className="rounded-md bg-accent px-2 py-1 text-2xs font-medium text-accent-ink transition-colors hover:bg-accent-hover"
-        >
-          Transform
-        </button>
-        <button
-          type="button"
-          onClick={() => archive(id)}
-          className="rounded-md border border-line bg-surface px-2 py-1 text-2xs text-ink-muted transition-colors hover:border-line-strong hover:text-ink"
-          aria-label="Archive thought"
-        >
-          Archive
-        </button>
+        {text.trim() && (
+          <button
+            type="button"
+            onClick={onTransform}
+            className="rounded-md bg-accent px-2 py-1 text-2xs font-medium text-accent-ink transition-colors hover:bg-accent-hover"
+          >
+            Transform
+          </button>
+        )}
+        {onDelete ? (
+          <button
+            type="button"
+            onClick={onDelete}
+            className="rounded-md border border-line bg-surface px-2 py-1 text-2xs text-ink-muted transition-colors hover:border-coral hover:text-coral"
+            aria-label="Delete draft"
+          >
+            Delete
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => archive(id)}
+            className="rounded-md border border-line bg-surface px-2 py-1 text-2xs text-ink-muted transition-colors hover:border-line-strong hover:text-ink"
+            aria-label="Archive thought"
+          >
+            Archive
+          </button>
+        )}
       </div>
     </article>
   )

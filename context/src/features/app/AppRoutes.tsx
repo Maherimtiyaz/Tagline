@@ -1,6 +1,7 @@
 import { useParams } from 'react-router-dom'
 import { InboxPage } from '../workspace/InboxPage'
-import { HistoryPage, CollectionsPage } from '../workspace/HistoryPage'
+import { HistoryPage } from '../workspace/HistoryPage'
+import { CollectionsPage } from '../collections/CollectionsPage'
 import { TemplatesPage } from '../templates/TemplatesPage'
 import { SettingsPage } from '../settings/SettingsPage'
 import { ThoughtEditor } from '../thoughts/ThoughtEditor'
@@ -12,7 +13,15 @@ import { ThoughtEditor } from '../thoughts/ThoughtEditor'
    ============================================================ */
 
 export function InboxRoute() {
-  return <InboxPage />
+  return <InboxPage view="inbox" />
+}
+
+export function WorkspaceRoute() {
+  return <InboxPage view="workspace" />
+}
+
+export function DraftsRoute() {
+  return <InboxPage view="drafts" />
 }
 
 export function EditorRoute() {
