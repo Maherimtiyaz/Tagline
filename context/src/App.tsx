@@ -1,30 +1,29 @@
 import { lazy, Suspense } from 'react'
-import { Navigate, Route, Routes, useNavigate } from 'react-router-dom'
+import { Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom'
 import { AppShell } from './components/layout/AppShell'
 import { CommandPalette } from './components/ui/CommandPalette'
 import { ToastViewport } from './components/ui/Toast'
-import { LandingPage } from './features/marketing/LandingPage'
-import { MobileApp } from './features/mobile/MobileApp'
-import {
-  InboxRoute,
-  WorkspaceRoute,
-  DraftsRoute,
-  EditorRoute,
-  HistoryRoute,
-  TemplatesRoute,
-  SettingsRoute,
-  CollectionsRoute,
-} from './features/app/AppRoutes'
 
-/* Code-split: the three-panel demo environment is a separate chunk. */
+/* Code-split: the landing page (and its marketing sections), mobile app,
+   demo environment, and routed workspace all load on demand so the initial
+   bundle stays lean — framer-motion + lucide only ship when a route needs
+   them. */
+const LandingLazy = lazy(() => import('./features/marketing/LandingPage').then((m) => ({ default: m.LandingPage })))
+const MobileLazy = lazy(() => import('./features/mobile/MobileApp').then((m) => ({ default: m.MobileApp })))
 const DemoLazy = lazy(() => import('./features/demo/DemoPage').then((m) => ({ default: m.DemoPage })))
+const InboxLazy = lazy(() => import('./features/workspace/InboxPage').then((m) => ({ default: m.InboxPage })))
+const HistoryLazy = lazy(() => import('./features/workspace/HistoryPage').then((m) => ({ default: m.HistoryPage })))
+const CollectionsLazy = lazy(() => import('./features/collections/CollectionsPage').then((m) => ({ default: m.CollectionsPage })))
+const TemplatesLazy = lazy(() => import('./features/templates/TemplatesPage').then((m) => ({ default: m.TemplatesPage })))
+const SettingsLazy = lazy(() => import('./features/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })))
+const EditorLazy = lazy(() => import('./features/thoughts/ThoughtEditor').then((m) => ({ default: m.ThoughtEditor })))
 
-function DemoFallback() {
+function RouteFallback() {
   return (
     <div className="flex min-h-dvh items-center justify-center bg-canvas">
       <p className="flex items-center gap-2 font-mono text-xs text-ink-subtle">
         <span className="h-1.5 w-1.5 animate-pulse-dot rounded-full bg-accent" aria-hidden />
-        loading demo...
+        loading...
       </p>
     </div>
   )
@@ -47,25 +46,37 @@ function Overlays() {
   )
 }
 
+/** Routed /app screens — inbox views and the focused thought editor. */
+function InboxScreen({ view }: { view?: 'inbox' | 'workspace' | 'drafts' }) {
+  return <Shell><InboxLazy view={view ?? 'inbox'} /></Shell>
+}
+
+function EditorScreen() {
+  const { id } = useParams()
+  const navigate = useNavigate()
+  const close = () => navigate('/app')
+  if (!id) return <InboxScreen />
+  return <Shell><EditorLazy thoughtId={id} onClose={close} /></Shell>
+}
+
 export default function App() {
   return (
     <>
-      <Suspense fallback={<DemoFallback />}>
+      <Suspense fallback={<RouteFallback />}>
         <Routes>
-          <Route path="/" element={<LandingPage />} />
+          <Route path="/" element={<LandingLazy />} />
           <Route path="/demo" element={<DemoLazy />} />
-          <Route path="/templates" element={<TemplatesRoute />} />
-          <Route path="/app" element={<Shell><InboxRoute /></Shell>} />
-          <Route path="/app/new" element={<Shell><EditorRoute /></Shell>} />
-          <Route path="/app/thought/:id" element={<Shell><EditorRoute /></Shell>} />
-          <Route path="/app/workspace" element={<Shell><WorkspaceRoute /></Shell>} />
-          <Route path="/app/drafts" element={<Shell><DraftsRoute /></Shell>} />
-          <Route path="/app/history" element={<Shell><HistoryRoute /></Shell>} />
-          <Route path="/app/templates" element={<Shell><TemplatesRoute /></Shell>} />
-          <Route path="/app/collections" element={<Shell><CollectionsRoute /></Shell>} />
-          <Route path="/app/collections/:id" element={<Shell><CollectionsRoute /></Shell>} />
-          <Route path="/app/settings" element={<Shell><SettingsRoute /></Shell>} />
-          <Route path="/mobile" element={<MobileApp />} />
+          <Route path="/templates" element={<TemplatesLazy inApp={false} />} />
+          <Route path="/app" element={<InboxScreen />} />
+          <Route path="/app/thought/:id" element={<EditorScreen />} />
+          <Route path="/app/workspace" element={<InboxScreen view="workspace" />} />
+          <Route path="/app/drafts" element={<InboxScreen view="drafts" />} />
+          <Route path="/app/history" element={<Shell><HistoryLazy /></Shell>} />
+          <Route path="/app/templates" element={<Shell><TemplatesLazy inApp /></Shell>} />
+          <Route path="/app/collections" element={<Shell><CollectionsLazy /></Shell>} />
+          <Route path="/app/collections/:id" element={<Shell><CollectionsLazy /></Shell>} />
+          <Route path="/app/settings" element={<Shell><SettingsLazy inApp /></Shell>} />
+          <Route path="/mobile" element={<MobileLazy />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>

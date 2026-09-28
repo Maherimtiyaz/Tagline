@@ -5,7 +5,6 @@ import type { TimelineKind } from '../../data/types'
 import { useAppStore } from '../../lib/store'
 import { clockTime } from '../../hooks/useTransformPipeline'
 import { SEED_TIMELINE, SEED_THOUGHTS } from '../../data/mock'
-import { Badge } from '../../components/ui/Badge'
 import { cn } from '../../lib/cn'
 
 /* ============================================================
