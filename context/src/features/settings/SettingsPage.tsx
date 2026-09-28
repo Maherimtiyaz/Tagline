@@ -80,7 +80,12 @@ export function SettingsPage({ inApp = true }: { inApp?: boolean }) {
         <section aria-labelledby="set-demo">
           <h2 id="set-demo" className="label-mono mb-3">Demo data</h2>
           <div className="rounded-xl border border-line bg-surface p-4">
-            <p className="text-sm font-medium">Reset the demo</p>
+            <p className="text-sm font-medium">Your thoughts are kept on refresh</p>
+            <p className="mb-4 text-xs text-ink-muted">
+              Thoughts you create in this demo persist in your browser's local storage only. The seeded examples
+              always come back, so the demo never breaks.
+            </p>
+            <p className="mb-3 text-sm font-medium">Reset the demo</p>
             <p className="mb-3 text-xs text-ink-muted">
               Restores the original thoughts, outputs and history. Your experiments disappear.
             </p>

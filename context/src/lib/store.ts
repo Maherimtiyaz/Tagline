@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { createJSONStorage, persist } from 'zustand/middleware'
 import type {
   GeneratedOutput,
   OutputType,
@@ -12,7 +13,62 @@ import { analyzeThought, generateOutput, uid } from './mockAI'
 /* ============================================================
    Global app store — thoughts, timeline, editor selection,
    command palette, toasts. All local; reset restores seeds.
+
+   Persistence: user-created thoughts + their outputs survive a
+   page refresh (localStorage). The seed demo content is always
+   re-merged on load so the demo never breaks; "Reset demo"
+   clears storage and restores the pristine state. Transient UI
+   state (toasts, palette, view) is never persisted.
    ============================================================ */
+
+const STORAGE_KEY = 'context-demo-state-v1'
+
+/** localStorage can be unavailable (private mode / embedded webviews). */
+const safeStorage = {
+  getItem: (name: string): string | null => {
+    try {
+      return window.localStorage.getItem(name)
+    } catch {
+      return null
+    }
+  },
+  setItem: (name: string, value: string): void => {
+    try {
+      window.localStorage.setItem(name, value)
+    } catch {
+      /* ignore quota / access errors — demo still works in-memory */
+    }
+  },
+  removeItem: (name: string): void => {
+    try {
+      window.localStorage.removeItem(name)
+    } catch {
+      /* ignore */
+    }
+  },
+}
+
+interface PersistedShape {
+  thoughts: Thought[]
+  timeline: TimelineEvent[]
+}
+
+/** Merge persisted thoughts with seeds: seeds win on id collisions,
+ *  non-seed (user/demo-created) thoughts are kept and sorted newest-first. */
+function mergeWithSeeds(persisted?: PersistedShape | null): PersistedShape {
+  if (!persisted || !Array.isArray(persisted.thoughts)) return seedState()
+  const seeds = SEED_THOUGHTS.map((t) => ({ ...t, outputs: [...t.outputs] }))
+  const seedIds = new Set(seeds.map((t) => t.id))
+  const extras = persisted.thoughts.filter((t) => t && typeof t.id === 'string' && !seedIds.has(t.id))
+  const seedTimelineIds = new Set(SEED_TIMELINE.map((e) => e.id))
+  const extraEvents = (Array.isArray(persisted.timeline) ? persisted.timeline : []).filter(
+    (e) => e && typeof e.id === 'string' && !seedTimelineIds.has(e.id),
+  )
+  return {
+    thoughts: [...extras].sort((a, b) => b.createdAt - a.createdAt).concat(seeds),
+    timeline: [...SEED_TIMELINE, ...extraEvents].sort((a, b) => a.at - b.at),
+  }
+}
 
 export interface Toast {
   id: string
@@ -63,16 +119,18 @@ const seedState = () => ({
   timeline: [...SEED_TIMELINE],
 })
 
-export const useAppStore = create<AppState>((set, get) => ({
-  ...seedState(),
-  selectedThoughtId: null,
-  paletteOpen: false,
-  toasts: [],
-  inboxView: 'inbox',
+export const useAppStore = create<AppState>()(
+  persist(
+    (set, get) => ({
+      ...seedState(),
+      selectedThoughtId: null,
+      paletteOpen: false,
+      toasts: [],
+      inboxView: 'inbox',
 
-  select: (id) => set({ selectedThoughtId: id }),
-  setPalette: (open) => set({ paletteOpen: open }),
-  setInboxView: (view) => set({ inboxView: view }),
+      select: (id) => set({ selectedThoughtId: id }),
+      setPalette: (open) => set({ paletteOpen: open }),
+      setInboxView: (view) => set({ inboxView: view }),
 
   addThought: (text, source = 'text') => {
     const id = uid('th')
@@ -254,7 +312,24 @@ export const useAppStore = create<AppState>((set, get) => ({
   dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 
   resetDemo: () => {
+    try {
+      window.localStorage.removeItem(STORAGE_KEY)
+    } catch {
+      /* ignore */
+    }
     set({ ...seedState(), selectedThoughtId: null, inboxView: 'inbox' as const })
     get().pushToast('Demo reset to its initial state', 'info')
   },
-}))
+    }),
+    {
+      name: STORAGE_KEY,
+      storage: createJSONStorage(() => safeStorage),
+      /* Only domain data persists — toasts/palette/view stay transient. */
+      partialize: (s): PersistedShape => ({ thoughts: s.thoughts, timeline: s.timeline }),
+      merge: (persisted, current) => ({
+        ...current,
+        ...mergeWithSeeds(persisted as PersistedShape | null),
+      }),
+    },
+  ),
+)
