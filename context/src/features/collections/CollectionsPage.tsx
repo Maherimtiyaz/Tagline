@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowRight, Check, Plus } from 'lucide-react'
 import type { GeneratedOutput, Thought } from '../../data/types'
@@ -28,11 +28,13 @@ interface Entry {
   collectionId?: string
 }
 
-export function CollectionsPage({ collectionId }: { collectionId?: string }) {
+export function CollectionsPage() {
+  const { id: collectionId } = useParams()
+  const navigate = useNavigate()
   const thoughts = useAppStore((s) => s.thoughts)
   const saveToCollection = useAppStore((s) => s.saveToCollection)
   const pushToast = useAppStore((s) => s.pushToast)
-  const navigate = useNavigate()
+
   const reduced = useReducedMotion()
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState('')

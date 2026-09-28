@@ -414,7 +414,7 @@ export function VoiceSection() {
                 </li>
               ))}
             </ul>
-            <Link to="/app/new" className="mt-8 inline-block">
+            <Link to="/app/thought/new" className="mt-8 inline-block">
               <Button variant="secondary" size="sm">
                 Try it in the editor <ArrowRight size={13} />
               </Button>

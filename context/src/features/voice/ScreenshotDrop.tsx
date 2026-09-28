@@ -36,8 +36,10 @@ export function ScreenshotDrop({ onSummary }: { onSummary?: (summary: string) =>
         role="button"
         tabIndex={0}
         aria-label="Drop a screenshot here to analyse it (simulated)"
+        aria-describedby="screenshot-help"
+        aria-busy={state === 'analyzing'}
         onClick={state === 'idle' ? analyze : undefined}
-        onKeyDown={(e) => { if (e.key === 'Enter' && state === 'idle') analyze() }}
+        onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && state === 'idle') { e.preventDefault(); analyze() } }}
         onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
         onDragLeave={() => setDragOver(false)}
         onDrop={(e) => { e.preventDefault(); setDragOver(false); analyze() }}
@@ -51,13 +53,13 @@ export function ScreenshotDrop({ onSummary }: { onSummary?: (summary: string) =>
           <>
             <ImageUp size={22} className="text-ink-faint" aria-hidden />
             <p className="text-sm font-medium">Drop a screenshot here</p>
-            <p className="text-xs text-ink-subtle">or click to analyse a sample capture</p>
+            <p className="text-xs text-ink-subtle" id="screenshot-help">or click to analyse a sample capture</p>
           </>
         )}
         {state === 'analyzing' && (
           <>
             <ScanLine size={22} className="text-accent animate-pulse-dot" aria-hidden />
-            <p className="font-mono text-xs text-ink">Analyzing image…</p>
+            <p className="font-mono text-xs text-ink" role="status">Analyzing image…</p>
             <div className="mt-1 h-1 w-40 overflow-hidden rounded-full bg-line">
               <div className="h-full w-1/2 rounded-full bg-accent animate-shimmer" />
             </div>

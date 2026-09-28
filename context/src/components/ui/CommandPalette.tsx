@@ -50,7 +50,7 @@ export function CommandPalette({ onNavigate }: { onNavigate?: (path: string) => 
       run: () => {
         const id = addThought('')
         select(id)
-        onNavigate?.('/app')
+        onNavigate?.(`/app/thought/${id}`)
       },
     },
     {

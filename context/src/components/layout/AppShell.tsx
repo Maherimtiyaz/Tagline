@@ -39,7 +39,7 @@ const NAV = [
 
 const MOBILE_NAV = [
   { to: '/app', label: 'Inbox', icon: InboxIcon, end: true },
-  { to: '/app/new', label: 'Create', icon: Plus, end: false },
+  { to: '/app/new', label: 'Create', icon: Plus, end: false, create: true },
   { to: '/app/history', label: 'History', icon: Archive, end: false },
   { to: '/app/settings', label: 'Settings', icon: Settings, end: false },
 ]
@@ -62,6 +62,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const rawCount = thoughts.filter((t) => t.status === 'raw').length
   const draftCount = thoughts.filter((t) => t.status !== 'archived' && (t.text.trim() === '' || (t.status === 'raw' && t.outputs.length === 0))).length
+
+  /** Create a blank thought and open the editor for it. */
+  const onNewThought = () => {
+    const id = useAppStore.getState().addThought('')
+    useAppStore.getState().select(id)
+    navigate(`/app/thought/${id}`)
+  }
 
   const isActive = (to: string, end: boolean) => navActive(location.pathname, to, end)
 
@@ -223,7 +230,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <button
               key={n.to}
               type="button"
-              onClick={() => navigate(n.to)}
+              onClick={() => ('create' in n && n.create ? onNewThought() : navigate(n.to))}
               aria-current={active ? 'page' : undefined}
               className={cn(
                 'flex flex-1 flex-col items-center justify-center gap-0.5 text-3xs',
