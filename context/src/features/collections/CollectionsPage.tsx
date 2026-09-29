@@ -148,7 +148,7 @@ export function CollectionsPage() {
                         <div className="flex items-center gap-2 rounded-lg border border-line bg-canvas-deep pl-3 pr-1.5 py-2 transition-colors hover:border-line-strong">
                           <button
                             type="button"
-                            onClick={() => navigate(`/app/thought/${t.id}`)}
+                            onClick={() => navigate(`/app/output/${t.id}/${o.id}`)}
                             className="flex min-w-0 flex-1 items-center gap-2 text-left"
                           >
                             <Badge tone={o.type === 'email' ? 'accent' : 'outline'}>{o.type}</Badge>
@@ -179,7 +179,7 @@ export function CollectionsPage() {
                 {unfiled.map(({ output: o, thought: t }) => (
                   <li key={o.id} className="flex items-center gap-2 rounded-lg border border-dashed border-line bg-surface px-3 py-2">
                     <Badge tone="outline">{o.type}</Badge>
-                    <button type="button" onClick={() => navigate(`/app/thought/${t.id}`)} className="min-w-0 flex-1 truncate text-left text-sm hover:text-accent">
+                    <button type="button" onClick={() => navigate(`/app/output/${t.id}/${o.id}`)} className="min-w-0 flex-1 truncate text-left text-sm hover:text-accent">
                       {o.title}
                     </button>
                     <select

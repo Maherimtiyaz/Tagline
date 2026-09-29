@@ -80,7 +80,7 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
     const outs = nonArchived.flatMap((t) =>
       t.outputs.filter((o) => (o.title + o.body).toLowerCase().includes(q)).map((o) => ({ thought: t, output: o })),
     )
-    const tpl = TEMPLATES.filter((tp) => (tp.title + tp.description).toLowerCase().includes(q))
+    const tpl = TEMPLATES.filter((tp) => (tp.name + tp.description).toLowerCase().includes(q))
     return { th, outs, tpl }
   }, [query, nonArchived])
 
@@ -197,7 +197,7 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
               >
                 <LayoutTemplate size={15} className="mt-0.5 shrink-0 text-ink-faint" aria-hidden />
                 <span className="min-w-0">
-                  <span className="block truncate text-sm font-medium"><Highlight text={tp.title} q={query} /></span>
+                  <span className="block truncate text-sm font-medium"><Highlight text={tp.name} q={query} /></span>
                   <span className="block truncate text-xs text-ink-muted"><Highlight text={tp.description} q={query} /></span>
                 </span>
                 <span className="ml-auto shrink-0 font-mono text-3xs text-ink-faint">template</span>
