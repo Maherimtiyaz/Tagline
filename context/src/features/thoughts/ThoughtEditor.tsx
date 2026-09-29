@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowLeft, Check, ChevronRight, Loader2, Mic, Wand2, X } from 'lucide-react'
 import type { OutputType } from '../../data/types'
@@ -20,7 +20,7 @@ import { Kbd } from '../../components/ui/Kbd'
    output. ESC closes; ⌘↵ runs the suggested transform.
    ============================================================ */
 
-export function ThoughtEditor({ thoughtId, onClose }: { thoughtId: string; onClose: () => void }) {
+export function ThoughtEditor({ thoughtId, onClose, initialType }: { thoughtId: string; onClose: () => void; initialType?: OutputType }) {
   const thought = useAppStore((s) => s.thoughts.find((t) => t.id === thoughtId))
   const updateText = useAppStore((s) => s.updateThoughtText)
   const addThought = useAppStore((s) => s.addThought)
@@ -31,10 +31,30 @@ export function ThoughtEditor({ thoughtId, onClose }: { thoughtId: string; onClo
   const [chosen, setChosen] = useState<OutputType | null>(null)
   const [outputId, setOutputId] = useState<string | null>(null)
   const [voiceOpen, setVoiceOpen] = useState(false)
+  /* Local draft of the thought text — store only commits on blur /
+     transform so typing stays smooth and undoable by the browser. */
+  const [draft, setDraft] = useState(thought?.text ?? '')
+  const [slash, setSlash] = useState<string | null>(null)
+  const [slashIdx, setSlashIdx] = useState(0)
 
-  const result = useMemo(() => (thought?.text ? analyzeThought(thought.text) : null), [thought?.text])
+  const commitDraft = (value: string) => {
+    if (value !== thought?.text) updateText(thoughtId, value)
+  }
+
+  const result = useMemo(() => (draft.trim() ? analyzeThought(draft) : null), [draft])
   const running = pipeline.stage !== 'idle' && pipeline.stage !== 'ready'
   const output = thought?.outputs.find((o) => o.id === outputId) ?? thought?.outputs[0]
+
+  /* Slash commands / template "Use" run the transformation immediately
+     on open (spec §31, §36). Guarded by a ref so it fires once per mount. */
+  const autoRan = useRef(false)
+  useEffect(() => {
+    if (initialType && thought && !autoRan.current) {
+      autoRan.current = true
+      runUnderstand(initialType)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   if (!thought) return null
 
@@ -60,9 +80,34 @@ export function ThoughtEditor({ thoughtId, onClose }: { thoughtId: string; onClo
       if (thought.text.trim()) runUnderstand()
     }
     if (e.key === 'Escape') {
+      /* ESC dismisses the slash-command menu first, then closes. */
+      if (slash !== null) { setSlash(null); return }
       if (pipeline.stage === 'ready') { pipeline.reset(); setPhase('raw'); setChosen(null) }
       else onClose()
     }
+  }
+
+  /* Slash commands (spec §31): typing "/" at the start of a line opens
+     a filterable transform menu; Enter/Tab runs the highlighted one. */
+  const applySlash = (type: OutputType) => {
+    const stripped = draft.replace(/\/[a-z]*$/i, '')
+    commitDraft(stripped.replace(/\s+$/, ''))
+    setSlash(null)
+    runUnderstand(type)
+  }
+
+  const slashMatches = useMemo(() => {
+    if (slash === null) return []
+    const q = slash.toLowerCase()
+    return OUTPUT_TYPES.filter(
+      (t) => t.command.slice(1).startsWith(q) || t.label.toLowerCase().startsWith(q),
+    ).slice(0, 7)
+  }, [slash])
+
+  const onDraftChange = (value: string) => {
+    setDraft(value)
+    const m = value.match(/(?:^|\n)\/([a-z]*)$/i)
+    setSlash(m ? m[1] : null)
   }
 
   return (

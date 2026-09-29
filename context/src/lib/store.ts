@@ -8,7 +8,7 @@ import type {
   ToneId,
 } from '../data/types'
 import { SEED_THOUGHTS, SEED_TIMELINE } from '../data/mock'
-import { analyzeThought, generateOutput, uid } from './mockAI'
+import { analyzeThought, generateOutput, retune, uid } from './mockAI'
 
 /* ============================================================
    Global app store — thoughts, timeline, editor selection,
@@ -51,6 +51,7 @@ const safeStorage = {
 interface PersistedShape {
   thoughts: Thought[]
   timeline: TimelineEvent[]
+  onboardingSeen?: boolean
 }
 
 /** Merge persisted thoughts with seeds: seeds win on id collisions,
@@ -67,6 +68,7 @@ function mergeWithSeeds(persisted?: PersistedShape | null): PersistedShape {
   return {
     thoughts: [...extras].sort((a, b) => b.createdAt - a.createdAt).concat(seeds),
     timeline: [...SEED_TIMELINE, ...extraEvents].sort((a, b) => a.at - b.at),
+    onboardingSeen: persisted.onboardingSeen === true,
   }
 }
 
@@ -79,6 +81,12 @@ export interface Toast {
 /** Which inbox view the list screen renders (spec §18 sidebar). */
 export type InboxView = 'inbox' | 'workspace' | 'drafts'
 
+/** Undo/redo journal for the output editor (spec §27). */
+export interface EditSnapshot {
+  body: string
+  tone: ToneId
+}
+
 interface AppState {
   thoughts: Thought[]
   timeline: TimelineEvent[]
@@ -86,11 +94,18 @@ interface AppState {
   paletteOpen: boolean
   toasts: Toast[]
   inboxView: InboxView
+  /** Global search query — empty means no active search (spec §33). */
+  searchQuery: string
+  /** Per-output undo history; cleared when an output is regenerated. */
+  editHistory: Record<string, { past: EditSnapshot[]; future: EditSnapshot[] }>
+  /** First-run onboarding overlay dismissed flag (persisted). */
+  onboardingSeen: boolean
 
   /* derived helpers */
   select: (id: string | null) => void
   setPalette: (open: boolean) => void
   setInboxView: (view: InboxView) => void
+  dismissOnboarding: () => void
 
   addThought: (text: string, source?: Thought['source']) => string
   updateThoughtText: (id: string, text: string) => void
@@ -108,6 +123,12 @@ interface AppState {
   reformat: (thoughtId: string, outputId: string, type: OutputType) => void
   editOutputBody: (thoughtId: string, outputId: string, body: string) => void
   saveToCollection: (thoughtId: string, outputId: string, collectionName: string) => void
+
+  /** Undo/redo over body edits + tone changes for one output. */
+  undoEdit: (outputId: string) => void
+  redoEdit: (outputId: string) => void
+
+  setSearchQuery: (q: string) => void
 
   pushToast: (message: string, tone?: Toast['tone']) => void
   dismissToast: (id: string) => void
@@ -127,10 +148,15 @@ export const useAppStore = create<AppState>()(
       paletteOpen: false,
       toasts: [],
       inboxView: 'inbox',
+      searchQuery: '',
+      editHistory: {},
+      onboardingSeen: false,
 
       select: (id) => set({ selectedThoughtId: id }),
       setPalette: (open) => set({ paletteOpen: open }),
       setInboxView: (view) => set({ inboxView: view }),
+      dismissOnboarding: () => set({ onboardingSeen: true }),
+      setSearchQuery: (q) => set({ searchQuery: q }),
 
   addThought: (text, source = 'text') => {
     const id = uid('th')
@@ -226,11 +252,16 @@ export const useAppStore = create<AppState>()(
     const thought = get().thoughts.find((t) => t.id === thoughtId)
     const output = thought?.outputs.find((o) => o.id === outputId)
     if (!thought || !output) return
-    const regenerated = generateOutput(thought.text, { type: output.type, tone })
+    /* Preserve the user's own edits: re-derive from the base body and
+       apply the new tone on top, instead of discarding edits with a
+       fresh generation. Falls back to full regeneration for legacy
+       outputs without a stored base. */
+    const base = output.baseBody ?? generateOutput(thought.text, { type: output.type, tone: 'professional' }).body
     const merged: GeneratedOutput = {
-      ...regenerated,
-      id: outputId,
-      createdAt: output.createdAt,
+      ...output,
+      baseBody: base,
+      body: tone === 'professional' ? base : retune(base, tone),
+      tone,
     }
     set((s) => ({
       thoughts: s.thoughts.map((t) =>
@@ -263,6 +294,8 @@ export const useAppStore = create<AppState>()(
           ? { ...t, outputs: t.outputs.map((o) => (o.id === outputId ? merged : o)) }
           : t,
       ),
+      /* Regenerating replaces the document — its undo journal resets. */
+      editHistory: { ...s.editHistory, [outputId]: { past: [], future: [] } },
       timeline: [
         ...s.timeline,
         {
@@ -277,13 +310,88 @@ export const useAppStore = create<AppState>()(
   },
 
   editOutputBody: (thoughtId, outputId, body) =>
-    set((s) => ({
-      thoughts: s.thoughts.map((t) =>
-        t.id === thoughtId
-          ? { ...t, outputs: t.outputs.map((o) => (o.id === outputId ? { ...o, body } : o)) }
-          : t,
-      ),
-    })),
+    set((s) => {
+      const thought = s.thoughts.find((t) => t.id === thoughtId)
+      const prev = thought?.outputs.find((o) => o.id === outputId)
+      const hist = s.editHistory[outputId] ?? { past: [], future: [] }
+      const nextHist = prev
+        ? {
+            past: [...hist.past, { body: prev.body, tone: prev.tone }].slice(-40),
+            future: [],
+          }
+        : hist
+      return {
+        thoughts: s.thoughts.map((t) =>
+          t.id === thoughtId
+            ? {
+                ...t,
+                outputs: t.outputs.map((o) =>
+                  o.id === outputId
+                    ? { ...o, body, baseBody: o.baseBody ?? o.body }
+                    : o,
+                ),
+              }
+            : t,
+        ),
+        editHistory: { ...s.editHistory, [outputId]: nextHist },
+      }
+    }),
+
+  undoEdit: (outputId) => {
+    const s = get()
+    const hist = s.editHistory[outputId]
+    if (!hist || hist.past.length === 0) return
+    const prev = hist.past[hist.past.length - 1]
+    let current: EditSnapshot | null = null
+    for (const t of s.thoughts) {
+      const o = t.outputs.find((x) => x.id === outputId)
+      if (o) {
+        current = { body: o.body, tone: o.tone }
+        break
+      }
+    }
+    if (!current) return
+    set({
+      thoughts: s.thoughts.map((t) => ({
+        ...t,
+        outputs: t.outputs.map((o) =>
+          o.id === outputId ? { ...o, body: prev.body, tone: prev.tone } : o,
+        ),
+      })),
+      editHistory: {
+        ...s.editHistory,
+        [outputId]: { past: hist.past.slice(0, -1), future: [current, ...hist.future] },
+      },
+    })
+  },
+
+  redoEdit: (outputId) => {
+    const s = get()
+    const hist = s.editHistory[outputId]
+    if (!hist || hist.future.length === 0) return
+    const next = hist.future[0]
+    let current: EditSnapshot | null = null
+    for (const t of s.thoughts) {
+      const o = t.outputs.find((x) => x.id === outputId)
+      if (o) {
+        current = { body: o.body, tone: o.tone }
+        break
+      }
+    }
+    if (!current) return
+    set({
+      thoughts: s.thoughts.map((t) => ({
+        ...t,
+        outputs: t.outputs.map((o) =>
+          o.id === outputId ? { ...o, body: next.body, tone: next.tone } : o,
+        ),
+      })),
+      editHistory: {
+        ...s.editHistory,
+        [outputId]: { past: [...hist.past, current], future: hist.future.slice(1) },
+      },
+    })
+  },
 
   saveToCollection: (thoughtId, outputId, collectionName) => {
     void outputId
@@ -317,15 +425,19 @@ export const useAppStore = create<AppState>()(
     } catch {
       /* ignore */
     }
-    set({ ...seedState(), selectedThoughtId: null, inboxView: 'inbox' as const })
+    set({ ...seedState(), selectedThoughtId: null, inboxView: 'inbox' as const, editHistory: {}, onboardingSeen: true })
     get().pushToast('Demo reset to its initial state', 'info')
   },
     }),
     {
       name: STORAGE_KEY,
       storage: createJSONStorage(() => safeStorage),
-      /* Only domain data persists — toasts/palette/view stay transient. */
-      partialize: (s): PersistedShape => ({ thoughts: s.thoughts, timeline: s.timeline }),
+      /* Only domain data persists — toasts/palette/view/edit-history stay transient. */
+      partialize: (s): PersistedShape => ({
+        thoughts: s.thoughts,
+        timeline: s.timeline,
+        onboardingSeen: s.onboardingSeen,
+      }),
       merge: (persisted, current) => ({
         ...current,
         ...mergeWithSeeds(persisted as PersistedShape | null),
