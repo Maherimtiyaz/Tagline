@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { CornerDownLeft, Plus, Search, X } from 'lucide-react'
+import { CornerDownLeft, LayoutTemplate, Plus, Search, X } from 'lucide-react'
 import { useAppStore, type InboxView } from '../../lib/store'
+import { TEMPLATES } from '../../data/mock'
 import { useReducedMotion } from '../../hooks/useReducedMotion'
 import { timeAgo } from '../../hooks/useTransformPipeline'
 import { ThoughtCard } from '../../components/ui/ThoughtCard'
@@ -79,7 +80,8 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
     const outs = nonArchived.flatMap((t) =>
       t.outputs.filter((o) => (o.title + o.body).toLowerCase().includes(q)).map((o) => ({ thought: t, output: o })),
     )
-    return { th, outs }
+    const tpl = TEMPLATES.filter((tp) => (tp.title + tp.description).toLowerCase().includes(q))
+    return { th, outs, tpl }
   }, [query, nonArchived])
 
   useEffect(() => {
@@ -94,6 +96,17 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
     return () => window.removeEventListener('keydown', onKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  /* Palette "Search thoughts and outputs" hands the query to us (spec §33). */
+  const searchQuery = useAppStore((s) => s.searchQuery)
+  const setSearchQuery = useAppStore((s) => s.setSearchQuery)
+  useEffect(() => {
+    if (searchQuery) {
+      setQuery(searchQuery)
+      setSearchQuery('')
+      searchRef.current?.focus()
+    }
+  }, [searchQuery, setSearchQuery])
 
   const onNew = () => {
     const id = addThought('')
@@ -149,6 +162,7 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
           <div className="space-y-5">
             <p className="font-mono text-2xs text-ink-subtle">
               {results.th.length} thought{results.th.length === 1 ? '' : 's'} · {results.outs.length} output{results.outs.length === 1 ? '' : 's'}
+              {results.tpl.length > 0 && ` · ${results.tpl.length} template${results.tpl.length === 1 ? '' : 's'}`}
             </p>
             {results.th.map((t) => (
               <ThoughtCard
@@ -174,7 +188,22 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
                 <span className="ml-auto shrink-0 font-mono text-3xs text-ink-faint">{timeAgo(output.createdAt)}</span>
               </button>
             ))}
-            {results.th.length === 0 && results.outs.length === 0 && (
+            {results.tpl.map((tp) => (
+              <button
+                key={tp.id}
+                type="button"
+                onClick={() => navigate(`/app/thought/new?template=${tp.id}`)}
+                className="flex w-full items-start gap-3 rounded-lg border border-line bg-surface p-4 text-left transition-colors hover:border-line-strong"
+              >
+                <LayoutTemplate size={15} className="mt-0.5 shrink-0 text-ink-faint" aria-hidden />
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-medium"><Highlight text={tp.title} q={query} /></span>
+                  <span className="block truncate text-xs text-ink-muted"><Highlight text={tp.description} q={query} /></span>
+                </span>
+                <span className="ml-auto shrink-0 font-mono text-3xs text-ink-faint">template</span>
+              </button>
+            ))}
+            {results.th.length === 0 && results.outs.length === 0 && results.tpl.length === 0 && (
               <EmptyState title="Nothing matches that." body="Try a name, a day of the week, or a word from the thought itself." />
             )}
           </div>

@@ -1,8 +1,11 @@
 import { lazy, Suspense } from 'react'
-import { Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom'
+import { Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { AppShell } from './components/layout/AppShell'
 import { CommandPalette } from './components/ui/CommandPalette'
 import { ToastViewport } from './components/ui/Toast'
+import { useAppStore } from './lib/store'
+import { TEMPLATES } from './data/mock'
+import type { OutputType } from './data/types'
 
 /* Code-split: the landing page (and its marketing sections), mobile app,
    demo environment, and routed workspace all load on demand so the initial
@@ -53,8 +56,32 @@ function InboxScreen({ view }: { view?: 'inbox' | 'workspace' | 'drafts' }) {
 
 function EditorScreen() {
   const { id } = useParams()
+  const [params] = useSearchParams()
   const navigate = useNavigate()
   const close = () => navigate('/app')
+
+  /* /app/thought/new — create a blank thought and swap the URL to its
+     real id so refresh/share keep working. Supports ?template=tp-*
+     (search + palette entry points, spec §35/§36). */
+  if (id === 'new') {
+    const addThought = useAppStore.getState().addThought
+    const select = useAppStore.getState().select
+    const tplId = params.get('template')
+    const tpl = tplId ? TEMPLATES.find((t) => t.id === tplId) : undefined
+    const seed = tpl ? `Template: ${tpl.name}` : ''
+    const newId = addThought(seed)
+    select(newId)
+    return (
+      <Shell>
+        <EditorLazy
+          thoughtId={newId}
+          onClose={close}
+          initialType={tpl?.outputType as OutputType | undefined}
+        />
+      </Shell>
+    )
+  }
+
   if (!id) return <InboxScreen />
   return <Shell><EditorLazy thoughtId={id} onClose={close} /></Shell>
 }
