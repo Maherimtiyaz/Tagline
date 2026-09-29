@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowLeft, Check, ChevronRight, Loader2, Mic, Wand2, X } from 'lucide-react'
 import type { OutputType } from '../../data/types'
+import { TEMPLATES } from '../../data/mock'
 import { useAppStore } from '../../lib/store'
 import { analyzeThought } from '../../lib/mockAI'
 import { OUTPUT_TYPES, STAGE_COPY, STAGE_ORDER } from '../../lib/outputMeta'
@@ -37,6 +38,15 @@ export function ThoughtEditor({ thoughtId, onClose, initialType }: { thoughtId: 
   const [slash, setSlash] = useState<string | null>(null)
   const [slashIdx, setSlashIdx] = useState(0)
 
+  /* Template entry point (spec §36): ?template=tp-* seeds a focused
+     capture with the template's required fields as prompts. */
+  const template = useMemo(() => {
+    if (!thought || !thought.text.startsWith('Template:')) return null
+    return TEMPLATES.find((t) => thought.text.slice(9).startsWith(t.name)) ?? null
+  }, [thought])
+  const [tplValues, setTplValues] = useState<Record<string, string>>({})
+  const tplFormId = useId()
+
   const commitDraft = (value: string) => {
     if (value !== thought?.text) updateText(thoughtId, value)
   }
@@ -58,10 +68,13 @@ export function ThoughtEditor({ thoughtId, onClose, initialType }: { thoughtId: 
 
   if (!thought) return null
 
-  const runUnderstand = (type?: OutputType) => {
+  const runUnderstand = (type?: OutputType, textOverride?: string) => {
     const target = type ?? result?.suggestions[0]?.type ?? 'email'
     setChosen(target)
     setOutputId(null)
+    if (textOverride !== undefined && textOverride.trim() !== (thought?.text ?? '')) {
+      updateText(thoughtId, textOverride)
+    }
     pipeline.run(() => {
       const out = transform(thought.id, target)
       setOutputId(out.id)
@@ -144,6 +157,70 @@ export function ThoughtEditor({ thoughtId, onClose, initialType }: { thoughtId: 
         {pipeline.stage === 'idle' && !output && (
           /* ---------- CAPTURE STATE ---------- */
           <div className="mx-auto max-w-2xl space-y-6 p-6">
+            {template ? (
+              /* Template flow (spec §36): structured fields → Generate. */
+              <form
+                id={tplFormId}
+                className="space-y-4"
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  const composed = template.fields
+                    .filter((f) => (tplValues[f.key] ?? '').trim())
+                    .map((f) => `${f.label}: ${tplValues[f.key].trim()}`)
+                    .join('\n')
+                  runUnderstand(template.outputType, composed || thought.text)
+                }}
+              >
+                <div className="flex items-start gap-3 rounded-xl border border-accent-line bg-accent-soft/50 p-4">
+                  <Wand2 size={16} className="mt-0.5 shrink-0 text-accent" aria-hidden />
+                  <div>
+                    <p className="text-sm font-semibold">{template.name}</p>
+                    <p className="mt-0.5 text-xs leading-relaxed text-ink-muted">{template.description}</p>
+                  </div>
+                </div>
+                {template.fields.map((f) => (
+                  <div key={f.key}>
+                    <label htmlFor={`${tplFormId}-${f.key}`} className="label-mono mb-1.5 block">{f.label}</label>
+                    {f.multiline ? (
+                      <textarea
+                        id={`${tplFormId}-${f.key}`}
+                        rows={4}
+                        value={tplValues[f.key] ?? ''}
+                        onChange={(e) => setTplValues((v) => ({ ...v, [f.key]: e.target.value }))}
+                        placeholder={f.placeholder}
+                        className="w-full resize-none rounded-lg border border-line bg-canvas-deep p-3 text-sm leading-relaxed text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none"
+                      />
+                    ) : (
+                      <input
+                        id={`${tplFormId}-${f.key}`}
+                        type="text"
+                        value={tplValues[f.key] ?? ''}
+                        onChange={(e) => setTplValues((v) => ({ ...v, [f.key]: e.target.value }))}
+                        placeholder={f.placeholder}
+                        className="h-9 w-full rounded-lg border border-line bg-canvas-deep px-3 text-sm text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none"
+                      />
+                    )}
+                  </div>
+                ))}
+                <div className="flex items-center gap-3 pt-1">
+                  <button
+                    type="submit"
+                    disabled={!Object.values(tplValues).some((v) => v.trim())}
+                    className="flex h-9 items-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-accent-ink transition-colors hover:bg-accent-hover disabled:pointer-events-none disabled:opacity-45"
+                  >
+                    <Wand2 size={14} aria-hidden /> Generate {template.name.toLowerCase()}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => updateText(thoughtId, '')}
+                    className="text-2xs text-ink-subtle underline-offset-2 hover:text-ink hover:underline"
+                  >
+                    or write a free thought instead
+                  </button>
+                </div>
+              </form>
+            ) : (
+            <>
             <div>
               <label htmlFor="thought-input" className="label-mono mb-2 block">Your thought</label>
               <textarea
@@ -232,6 +309,8 @@ export function ThoughtEditor({ thoughtId, onClose, initialType }: { thoughtId: 
                 or press <Kbd keys={['⌘', '↵']} /> to run the top suggestion
               </p>
             </div>
+            </>
+            )}
           </div>
         )}
 
