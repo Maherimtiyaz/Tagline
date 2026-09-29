@@ -90,7 +90,7 @@ export function ThoughtEditor({ thoughtId, onClose, initialType }: { thoughtId: 
   const onKeyDown = (e: React.KeyboardEvent) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault()
-      if (thought.text.trim()) runUnderstand()
+      if (draft.trim()) { commitDraft(draft); runUnderstand(undefined, draft) }
     }
     if (e.key === 'Escape') {
       /* ESC dismisses the slash-command menu first, then closes. */
@@ -223,18 +223,60 @@ export function ThoughtEditor({ thoughtId, onClose, initialType }: { thoughtId: 
             <>
             <div>
               <label htmlFor="thought-input" className="label-mono mb-2 block">Your thought</label>
-              <textarea
-                id="thought-input"
-                autoFocus
-                value={thought.text}
-                onChange={(e) => updateText(thought.id, e.target.value)}
-                rows={7}
-                spellCheck={false}
-                placeholder="Dump it however it comes out. Incomplete sentences are fine."
-                className="w-full resize-none rounded-xl border border-line bg-canvas-deep p-4 font-mono text-base leading-relaxed text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none"
-              />
+              {/* Slash-command menu (spec §31): opens when a line starts with "/" */}
+              <div className="relative">
+                <AnimatePresence>
+                  {slash !== null && slashMatches.length > 0 && (
+                    <motion.ul
+                      role="listbox"
+                      aria-label="Transform commands"
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -4 }}
+                      transition={{ duration: reduced ? 0 : 0.14 }}
+                      className="absolute bottom-full left-0 z-30 mb-2 w-64 overflow-hidden rounded-lg border border-line bg-surface shadow-pop"
+                    >
+                      {slashMatches.map((t, i) => (
+                        <li key={t.id}>
+                          <button
+                            type="button"
+                            role="option"
+                            aria-selected={i === slashIdx}
+                            onClick={() => applySlash(t.id)}
+                            onMouseEnter={() => setSlashIdx(i)}
+                            className={cn(
+                              'flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors',
+                              i === slashIdx ? 'bg-accent-soft text-ink' : 'text-ink-muted hover:bg-surface-hover',
+                            )}
+                          >
+                            <span className="font-mono text-2xs text-accent">{t.command}</span>
+                            <span>{t.label}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </motion.ul>
+                  )}
+                </AnimatePresence>
+                <textarea
+                  id="thought-input"
+                  autoFocus
+                  value={draft}
+                  onChange={(e) => onDraftChange(e.target.value)}
+                  onBlur={() => commitDraft(draft)}
+                  onKeyDownCapture={(e) => {
+                    if (slash === null || slashMatches.length === 0) return
+                    if (e.key === 'ArrowDown') { e.preventDefault(); setSlashIdx((i) => (i + 1) % slashMatches.length) }
+                    else if (e.key === 'ArrowUp') { e.preventDefault(); setSlashIdx((i) => (i - 1 + slashMatches.length) % slashMatches.length) }
+                    else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); applySlash(slashMatches[slashIdx].id) }
+                  }}
+                  rows={7}
+                  spellCheck={false}
+                  placeholder="Dump it however it comes out. Incomplete sentences are fine. Type / for commands."
+                  className="w-full resize-none rounded-xl border border-line bg-canvas-deep p-4 font-mono text-base leading-relaxed text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none"
+                />
+              </div>
               <div className="mt-1.5 flex items-center justify-between">
-                <p className="font-mono text-3xs text-ink-faint">{thought.text.length} chars</p>
+                <p className="font-mono text-3xs text-ink-faint">{draft.length} chars</p>
                 <button
                   type="button"
                   onClick={() => setVoiceOpen((v) => !v)}
@@ -254,7 +296,7 @@ export function ThoughtEditor({ thoughtId, onClose, initialType }: { thoughtId: 
                       <VoiceCapture
                         compact
                         seed={thought.id.length}
-                        onComplete={(t) => { updateText(thought.id, t); setVoiceOpen(false) }}
+                        onComplete={(t) => { setDraft(t); commitDraft(t); setVoiceOpen(false) }}
                       />
                     </div>
                   </motion.div>
