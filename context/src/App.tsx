@@ -20,6 +20,8 @@ const CollectionsLazy = lazy(() => import('./features/collections/CollectionsPag
 const TemplatesLazy = lazy(() => import('./features/templates/TemplatesPage').then((m) => ({ default: m.TemplatesPage })))
 const SettingsLazy = lazy(() => import('./features/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })))
 const EditorLazy = lazy(() => import('./features/thoughts/ThoughtEditor').then((m) => ({ default: m.ThoughtEditor })))
+const TransformLazy = lazy(() => import('./features/transform/TransformExperience').then((m) => ({ default: m.TransformExperience })))
+const OutputWorkspaceLazy = lazy(() => import('./features/output/OutputWorkspace').then((m) => ({ default: m.OutputWorkspace })))
 
 function RouteFallback() {
   return (
@@ -96,6 +98,8 @@ export default function App() {
           <Route path="/templates" element={<TemplatesLazy inApp={false} />} />
           <Route path="/app" element={<InboxScreen />} />
           <Route path="/app/thought/:id" element={<EditorScreen />} />
+          <Route path="/app/transform" element={<Shell><TransformLazy /></Shell>} />
+          <Route path="/app/output/:thoughtId/:outputId" element={<Shell><OutputWorkspaceLazy /></Shell>} />
           <Route path="/app/workspace" element={<InboxScreen view="workspace" />} />
           <Route path="/app/drafts" element={<InboxScreen view="drafts" />} />
           <Route path="/app/history" element={<Shell><HistoryLazy /></Shell>} />
