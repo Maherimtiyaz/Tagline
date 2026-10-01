@@ -9,6 +9,7 @@ import { useReducedMotion } from '../../hooks/useReducedMotion'
 import { ContextPanelBody } from '../../components/ui/ContextChip'
 import { StageRail, ThoughtScatter } from '../../animations/Transformation'
 import { DEMO_EXAMPLES } from '../../data/mock'
+import { useAppStore } from '../../lib/store'
 import { cn } from '../../lib/cn'
 
 /* ============================================================
@@ -30,10 +31,15 @@ export function DemoPage() {
   const output = useMemo(() => generateOutput(text, { type }), [text, type])
   const played = pipeline.stage === 'ready'
 
+  /* Spec §56 conversion tracking: one record per completed run. */
+  const recordDemoVisit = useAppStore((s) => s.recordDemoVisit)
+  const demoVisits = useAppStore((s) => s.demoVisits)
+  const resetDemo = useAppStore((s) => s.resetDemo)
+
   const play = () => {
     if (!text.trim()) return
     setPhase('raw')
-    pipeline.run()
+    pipeline.run(() => recordDemoVisit())
     if (!reduced) {
       window.setTimeout(() => setPhase('decompose'), 420)
       window.setTimeout(() => setPhase('structured'), 1080)
@@ -48,11 +54,26 @@ export function DemoPage() {
           <p className="text-sm text-ink-muted">No signup. Type anything messy and press Transform.</p>
         </div>
         <div className="ml-auto flex items-center gap-2">
+          {/* Spec §56: quiet, persisted record of completed demo runs. */}
+          {demoVisits > 0 && (
+            <span className="hidden items-center rounded-full border border-line px-2.5 py-1 font-mono text-3xs text-ink-subtle sm:flex" role="status">
+              {demoVisits} run{demoVisits === 1 ? '' : 's'} completed in this browser
+            </span>
+          )}
           <button type="button" onClick={() => { pipeline.reset(); setPhase('raw') }} className="flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1.5 text-xs text-ink-muted hover:border-line-strong hover:text-ink">
             <RotateCcw size={12} aria-hidden /> Reset
           </button>
           <button type="button" onClick={play} disabled={!text.trim()} className="rounded-md bg-accent px-3.5 py-1.5 text-sm font-medium text-accent-ink transition-colors hover:bg-accent-hover disabled:opacity-45">
             <span className="flex items-center gap-1.5"><Play size={12} aria-hidden /> Transform ⌘↵</span>
+          </button>
+          {/* Spec §57: allow resetting the demo from anywhere in it. */}
+          <button
+            type="button"
+            onClick={() => { resetDemo(); navigate('/app') }}
+            aria-label="Reset demo to its initial state"
+            className="flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1.5 text-xs text-ink-muted transition-colors hover:border-line-strong hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
+          >
+            Reset demo
           </button>
         </div>
       </header>

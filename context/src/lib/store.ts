@@ -55,6 +55,8 @@ interface PersistedShape {
   /** User-created collections (Phase 12) — now survive refresh. */
   userCollections?: Collection[]
   onboardingSeen?: boolean
+  /** Completed demo runs this browser (spec §56 conversion tracking). */
+  demoVisits?: number
 }
 
 /** Merge persisted thoughts with seeds: seeds win on id collisions,
@@ -77,6 +79,10 @@ function mergeWithSeeds(persisted?: PersistedShape | null): PersistedShape {
     timeline: [...SEED_TIMELINE, ...extraEvents].sort((a, b) => a.at - b.at),
     userCollections: extraCollections,
     onboardingSeen: persisted.onboardingSeen === true,
+    demoVisits:
+      typeof persisted.demoVisits === 'number' && Number.isFinite(persisted.demoVisits)
+        ? Math.max(0, Math.floor(persisted.demoVisits))
+        : 0,
   }
 }
 
@@ -110,12 +116,18 @@ interface AppState {
   editHistory: Record<string, { past: EditSnapshot[]; future: EditSnapshot[] }>
   /** First-run onboarding overlay dismissed flag (persisted). */
   onboardingSeen: boolean
+  /** Completed demo runs recorded in this browser (spec §56, persisted). */
+  demoVisits: number
 
   /* derived helpers */
   select: (id: string | null) => void
   setPalette: (open: boolean) => void
   setInboxView: (view: InboxView) => void
   dismissOnboarding: () => void
+  /** Re-show the first-run welcome card (Settings → Replay welcome tour). */
+  showOnboarding: () => void
+  /** Record one completed /demo transformation. */
+  recordDemoVisit: () => void
 
   addThought: (text: string, source?: Thought['source']) => string
   updateThoughtText: (id: string, text: string) => void
@@ -178,11 +190,13 @@ export const useAppStore = create<AppState>()(
       editHistory: {},
       userCollections: [] as Collection[],
       onboardingSeen: false,
+      demoVisits: 0,
 
       select: (id) => set({ selectedThoughtId: id }),
       setPalette: (open) => set({ paletteOpen: open }),
       setInboxView: (view) => set({ inboxView: view }),
       dismissOnboarding: () => set({ onboardingSeen: true }),
+      recordDemoVisit: () => set((s) => ({ demoVisits: s.demoVisits + 1 })),
       setSearchQuery: (q) => set({ searchQuery: q }),
 
   addThought: (text, source = 'text') => {
@@ -541,7 +555,7 @@ export const useAppStore = create<AppState>()(
     } catch {
       /* ignore */
     }
-    set({ ...seedState(), selectedThoughtId: null, inboxView: 'inbox' as const, editHistory: {}, userCollections: [], onboardingSeen: true })
+    set({ ...seedState(), selectedThoughtId: null, inboxView: 'inbox' as const, editHistory: {}, userCollections: [], onboardingSeen: true, demoVisits: 0 })
     get().pushToast('Demo reset to its initial state', 'info')
   },
     }),
@@ -554,6 +568,7 @@ export const useAppStore = create<AppState>()(
         timeline: s.timeline,
         userCollections: s.userCollections,
         onboardingSeen: s.onboardingSeen,
+        demoVisits: s.demoVisits,
       }),
       merge: (persisted, current) => ({
         ...current,

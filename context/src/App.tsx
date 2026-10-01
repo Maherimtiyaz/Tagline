@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { AppShell } from './components/layout/AppShell'
+import { Onboarding } from './components/layout/Onboarding'
 import { CommandPalette } from './components/ui/CommandPalette'
 import { ToastViewport } from './components/ui/Toast'
 import { useAppStore } from './lib/store'
@@ -45,6 +46,7 @@ function Overlays() {
   const navigate = useNavigate()
   return (
     <>
+      <Onboarding />
       <CommandPalette onNavigate={navigate} />
       <ToastViewport />
     </>

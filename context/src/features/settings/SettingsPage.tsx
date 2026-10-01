@@ -111,6 +111,21 @@ export function SettingsPage({ inApp = true }: { inApp?: boolean }) {
                 <RotateCcw size={12} aria-hidden /> Reset demo
               </button>
             )}
+            {/* Spec §56/§57: first-run welcome + completed demo runs. */}
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
+              <p className="font-mono text-3xs text-ink-subtle tabular-nums">
+                {demoVisits > 0
+                  ? `${demoVisits} demo run${demoVisits === 1 ? '' : 's'} completed in this browser`
+                  : 'No demo runs completed yet'}
+              </p>
+              <button
+                type="button"
+                onClick={() => { showOnboarding() }}
+                className="rounded-md border border-line px-3 py-1.5 text-xs text-ink-muted transition-colors hover:border-line-strong hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
+              >
+                Replay welcome tour
+              </button>
+            </div>
           </div>
         </section>
 
