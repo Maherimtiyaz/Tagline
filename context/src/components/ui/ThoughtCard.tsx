@@ -63,7 +63,7 @@ export function ThoughtCard({
           {text.trim() ? `"${preview}"` : <span className="italic text-ink-faint">Empty draft — open it and start typing.</span>}
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          <span className="font-mono text-3xs text-ink-subtle">{timeAgo(createdAt)}</span>
+          <span className="font-mono text-3xs tabular-nums text-ink-subtle">{timeAgo(createdAt)}</span>
           <Badge tone="outline" className="gap-1">
             {SOURCE_META[source].icon}
             {SOURCE_META[source].label}
