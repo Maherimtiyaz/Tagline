@@ -196,6 +196,7 @@ export const useAppStore = create<AppState>()(
       setPalette: (open) => set({ paletteOpen: open }),
       setInboxView: (view) => set({ inboxView: view }),
       dismissOnboarding: () => set({ onboardingSeen: true }),
+      showOnboarding: () => set({ onboardingSeen: false }),
       recordDemoVisit: () => set((s) => ({ demoVisits: s.demoVisits + 1 })),
       setSearchQuery: (q) => set({ searchQuery: q }),
 

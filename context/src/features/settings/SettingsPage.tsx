@@ -26,6 +26,8 @@ export function SettingsPage({ inApp = true }: { inApp?: boolean }) {
   const setTheme = useThemeStore((s) => s.setTheme)
   const resetDemo = useAppStore((s) => s.resetDemo)
   const pushToast = useAppStore((s) => s.pushToast)
+  const demoVisits = useAppStore((s) => s.demoVisits)
+  const showOnboarding = useAppStore((s) => s.showOnboarding)
   const navigate = useNavigate()
   const [confirming, setConfirming] = useState(false)
 
