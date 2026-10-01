@@ -51,3 +51,37 @@ Verified via `tsc + vite build` (clean) and a preview-server route sweep
 
 ### Build/lint status
 - `npm run build` ✓ (tsc -b + vite, 1.4s); `npm run lint` → 0 errors, 5 pre-existing warnings; all 7 routes serve 200 on preview.
+
+---
+
+## Phase 15 — Global States & End-to-End Regression (beyond README's 10-phase order)
+
+**Goal:** close the loop on Phases 11–14 — make every global state reachable from anywhere, and prove the full user journey (capture → transform → edit → export → save → replay/reset) works as one flow.
+
+### Shipped
+- **Command palette now covers all global actions** (`CommandPalette.tsx`):
+  - "Replay welcome tour" (Settings group) — closes the palette, then re-triggers the first-run Onboarding card via `showOnboarding()`; previously only reachable from Settings.
+  - "Reset demo data" (Settings group) — calls `resetDemo()`, confirms with a success toast, and routes to `/app`. The ErrorBoundary tells users to "reset the demo from Settings"; now it's also two keystrokes away (⌘K → R).
+- **Error/offline states verified:** `ErrorBoundary.tsx` renders a token-styled recovery card (Reload / Dismiss) around the whole app tree; route-level lazy chunks fall back to `RouteFallback` shimmer; localStorage shim in `store.ts` degrades silently when storage is unavailable (private-mode safe).
+
+### End-to-end regression harness (16 checks, all PASS)
+Deterministic store-level walkthrough of the §72 quality-bar journey:
+1. Capture creates a raw thought
+2. Transform produces an email output + marks processed
+3. Output body edit persists
+4. Undo reverts / 5. redo reapplies the edit
+6. Export gating: email offers `.eml`, never Block Kit
+7. `.eml` carries RFC-5322 headers
+8. Slack output serializes to valid Block Kit JSON
+9. `saveToCollection` resolves user collections by name (Phase 12/13 wiring)
+10. Thought actually filed in the collection
+11. Rename + 12. remove collection work (Phase 13)
+13. Onboarding dismiss → 14. replay cycle (Phase 14 action)
+15. Demo-visit counter increments (§56 conversion tracking)
+16. Reset restores seed state (visits 0, user collections empty, custom thoughts gone)
+
+### Build/lint/route status
+- `npm run build` ✓ (tsc -b + vite, 1.27s); `npm run lint` → 0 errors, 5 pre-existing warnings
+- Preview sweep: `/`, `/demo`, `/app`, `/app/history`, `/app/templates`, `/app/settings`, `/mobile` → all 200
+
+**Result: Phase 15 complete.** Project now spans README phases 1–10 plus extension phases 11–15.

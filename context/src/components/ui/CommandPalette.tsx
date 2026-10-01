@@ -60,6 +60,27 @@ export function CommandPalette({ onNavigate }: { onNavigate?: (path: string) => 
 
   const commands: Command[] = [
     {
+      id: 'replay-onboarding',
+      label: 'Replay welcome tour',
+      icon: <Sparkles size={15} />,
+      group: 'Settings',
+      run: () => {
+        setOpen(false)
+        useAppStore.getState().showOnboarding()
+      },
+    },
+    {
+      id: 'reset-demo',
+      label: 'Reset demo data',
+      icon: <Archive size={15} />,
+      group: 'Settings',
+      run: () => {
+        useAppStore.getState().resetDemo()
+        pushToast('Demo reset to seed data', 'success')
+        onNavigate?.('/app')
+      },
+    },
+    {
       id: 'new',
       label: 'New thought',
       hint: 'N',
