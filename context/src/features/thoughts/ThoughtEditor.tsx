@@ -66,6 +66,14 @@ export function ThoughtEditor({ thoughtId, onClose, initialType }: { thoughtId: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  const slashMatches = useMemo(() => {
+    if (slash === null) return []
+    const q = slash.toLowerCase()
+    return OUTPUT_TYPES.filter(
+      (t) => t.command.slice(1).startsWith(q) || t.label.toLowerCase().startsWith(q),
+    ).slice(0, 7)
+  }, [slash])
+
   if (!thought) return null
 
   const runUnderstand = (type?: OutputType, textOverride?: string) => {
@@ -108,14 +116,6 @@ export function ThoughtEditor({ thoughtId, onClose, initialType }: { thoughtId: 
     setSlash(null)
     runUnderstand(type)
   }
-
-  const slashMatches = useMemo(() => {
-    if (slash === null) return []
-    const q = slash.toLowerCase()
-    return OUTPUT_TYPES.filter(
-      (t) => t.command.slice(1).startsWith(q) || t.label.toLowerCase().startsWith(q),
-    ).slice(0, 7)
-  }, [slash])
 
   const onDraftChange = (value: string) => {
     setDraft(value)

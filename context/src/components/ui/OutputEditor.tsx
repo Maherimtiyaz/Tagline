@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
-import { Check, Copy, Download, Link2, Quote } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { motion } from 'framer-motion'
+import { Check, ChevronDown, Copy, Download, Link2, Quote } from 'lucide-react'
 import type { GeneratedOutput, OutputType, ToneId } from '../../data/types'
 import { OUTPUT_TYPES, TONES } from '../../lib/outputMeta'
+import { downloadExport, formatsFor, serializeExport } from '../../lib/exporters'
 import { useAppStore } from '../../lib/store'
 import { cn } from '../../lib/cn'
 import { SegmentedControl } from '../ui/SegmentedControl'
@@ -44,17 +45,6 @@ export function OutputEditor({
     setCopied(true)
     pushToast('Copied to clipboard')
     window.setTimeout(() => setCopied(false), 1600)
-  }
-
-  const onExport = () => {
-    const blob = new Blob([`# ${output.title}\n\n${display}`], { type: 'text/markdown' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${output.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.md`
-    a.click()
-    URL.revokeObjectURL(url)
-    pushToast('Export ready')
   }
 
   const applyQuick = (kind: 'shorter' | 'clearer') => {
@@ -157,9 +147,7 @@ export function OutputEditor({
             {copied ? <Check size={13} aria-hidden /> : <Copy size={13} aria-hidden />}
             {copied ? 'Copied' : 'Copy'}
           </button>
-          <button type="button" onClick={onExport} className="flex items-center gap-1.5 rounded-md border border-line bg-canvas-deep px-2.5 py-1.5 text-xs text-ink transition-colors hover:border-line-strong">
-            <Download size={13} aria-hidden /> Export
-          </button>
+          <ExportMenu output={output} display={display} onDone={(fmt) => pushToast(`Exported ${fmt}`, 'success')} />
           <button type="button" onClick={() => saveToCollection(thoughtId, output.id, 'Client Work')} className="flex items-center gap-1.5 rounded-md border border-line bg-canvas-deep px-2.5 py-1.5 text-xs text-ink transition-colors hover:border-line-strong">
             Save
           </button>
@@ -212,6 +200,103 @@ export function OutputEditor({
   )
 }
 
+/* ============================================================
+   ExportMenu — Phase 11. Format-aware export popover: the
+   offered formats depend on the output type (Slack → Block Kit
+   JSON, email → .eml, everything → text/markdown). Keyboard
+   accessible (Esc closes, focus returns to the trigger).
+   ============================================================ */
+
+export function ExportMenu({
+  output,
+  display,
+  onDone,
+}: {
+  output: GeneratedOutput
+  /** Body currently shown in the editor (may contain unsaved edits). */
+  display: string
+  onDone?: (formatLabel: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const formats = useMemo(() => formatsFor(output.type), [output.type])
+
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setOpen(false)
+        btnRef.current?.focus()
+      }
+    }
+    const onClick = (e: MouseEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('mousedown', onClick)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('mousedown', onClick)
+    }
+  }, [open])
+
+  const pick = (id: string, label: string) => {
+    downloadExport({ ...output, body: display }, id)
+    setOpen(false)
+    onDone?.(label)
+  }
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        ref={btnRef}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1.5 rounded-md border border-line bg-canvas-deep px-2.5 py-1.5 text-xs text-ink transition-colors hover:border-line-strong"
+      >
+        <Download size={13} aria-hidden /> Export
+        <ChevronDown size={12} aria-hidden className={cn('transition-transform', open && 'rotate-180')} />
+      </button>
+      {open && (
+        <div
+          role="menu"
+          aria-label="Export format"
+          className="absolute bottom-full left-0 z-30 mb-1.5 w-44 rounded-lg border border-line bg-surface p-1 shadow-lg"
+        >
+          {formats.map((f) => (
+            <button
+              key={f.id}
+              role="menuitem"
+              type="button"
+              onClick={() => pick(f.id, f.label)}
+              className="flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left text-xs text-ink transition-colors hover:bg-surface-hover"
+            >
+              {f.label}
+              <span className="font-mono text-3xs text-ink-faint">.{f.ext}</span>
+            </button>
+          ))}
+          <button
+            role="menuitem"
+            type="button"
+            onClick={() => {
+              const full = (output.subject ? `Subject: ${output.subject}\n\n` : '') + display
+              navigator.clipboard?.writeText(serializeExport({ ...output, body: full }, 'markdown')).catch(() => {})
+              setOpen(false)
+              onDone?.('Markdown to clipboard')
+            }}
+            className="flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-xs text-ink-muted transition-colors hover:bg-surface-hover"
+          >
+            Copy as Markdown
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** Typewriter-ish reveal used when an output first lands. */
 export function OutputReveal({ output }: { output: GeneratedOutput }) {
   const words = useMemo(() => output.body.split(/(\s+)/), [output.body])
@@ -234,5 +319,3 @@ export function OutputReveal({ output }: { output: GeneratedOutput }) {
     </motion.p>
   )
 }
-
-void AnimatePresence
