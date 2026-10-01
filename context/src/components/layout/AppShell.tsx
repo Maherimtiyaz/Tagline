@@ -53,6 +53,7 @@ function navActive(pathname: string, to: string, end: boolean) {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false)
   const thoughts = useAppStore((s) => s.thoughts)
+  const userCollections = useAppStore((s) => s.userCollections)
   const setPalette = useAppStore((s) => s.setPalette)
   const resetDemo = useAppStore((s) => s.resetDemo)
   const theme = useThemeStore((s) => s.theme)
@@ -147,7 +148,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {!collapsed && (
             <>
               <p className="label-mono px-2 pb-1 pt-5">Collections</p>
-              {COLLECTIONS.slice(0, 4).map((c) => (
+              {[...COLLECTIONS, ...userCollections].slice(0, 6).map((c) => (
                 <button
                   key={c.id}
                   type="button"

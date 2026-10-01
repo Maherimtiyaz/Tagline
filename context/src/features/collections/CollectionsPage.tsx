@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowRight, Check, Plus } from 'lucide-react'
+import { ArrowRight, Check, ChevronDown, Plus } from 'lucide-react'
 import type { GeneratedOutput, Thought } from '../../data/types'
 import { COLLECTIONS } from '../../data/mock'
 import { useAppStore } from '../../lib/store'
@@ -12,9 +12,10 @@ import { cn } from '../../lib/cn'
 
 /* ============================================================
    Collections (spec §37) — organise outputs into named sets.
-   New collections are session-only (demo state); seeded ones
-   match the sidebar. "Save to collection" is available inline
-   on every unfiled output.
+   Phase 12: collections live in the persisted store, so user-
+   created ones survive refresh; filing happens by collection
+   id via an accessible picker (no nested buttons); filed
+   outputs can be moved or unfiled inline.
    ============================================================ */
 
 const DOT: Record<string, string> = {
@@ -28,21 +29,109 @@ interface Entry {
   collectionId?: string
 }
 
+/** Small dropdown that lists collections; picks one per row. */
+function FilePicker({
+  value,
+  options,
+  onPick,
+  label,
+}: {
+  value: string
+  options: { id: string; name: string }[]
+  onPick: (id: string) => void
+  label: string
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', onDoc)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDoc)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  const current = options.find((o) => o.id === value)
+
+  return (
+    <div ref={ref} className="relative shrink-0">
+      <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={label}
+        onClick={() => setOpen((v) => !v)}
+        className="flex h-7 items-center gap-1 rounded-md border border-line bg-canvas-deep px-2 text-2xs text-ink-muted transition-colors hover:border-line-strong hover:text-ink"
+      >
+        {current ? current.name : 'Save to…'}
+        <ChevronDown size={11} aria-hidden className={cn('transition-transform', open && 'rotate-180')} />
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.ul
+            role="listbox"
+            aria-label="Choose a collection"
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.15 }}
+            className="absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-lg border border-line bg-surface shadow-lg"
+          >
+            {options.map((o) => (
+              <li key={o.id} role="option" aria-selected={o.id === value}>
+                <button
+                  type="button"
+                  onClick={() => { onPick(o.id); setOpen(false) }}
+                  className={cn(
+                    'flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-surface-hover',
+                    o.id === value ? 'text-accent' : 'text-ink-muted hover:text-ink',
+                  )}
+                >
+                  {o.id === value ? <Check size={11} aria-hidden /> : <span className="h-2 w-2 rounded-full bg-line-strong" aria-hidden />}
+                  {o.name}
+                </button>
+              </li>
+            ))}
+            {value && (
+              <li role="option" aria-selected={false} className="border-t border-line">
+                <button
+                  type="button"
+                  onClick={() => { onPick(''); setOpen(false) }}
+                  className="w-full px-3 py-1.5 text-left text-xs text-ink-subtle transition-colors hover:bg-surface-hover hover:text-coral"
+                >
+                  Remove from collection
+                </button>
+              </li>
+            )}
+          </motion.ul>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
 export function CollectionsPage() {
   const { id: collectionId } = useParams()
   const navigate = useNavigate()
   const thoughts = useAppStore((s) => s.thoughts)
-  const saveToCollection = useAppStore((s) => s.saveToCollection)
-  const pushToast = useAppStore((s) => s.pushToast)
+  const userCollections = useAppStore((s) => s.userCollections)
+  const addCollection = useAppStore((s) => s.addCollection)
+  const moveToCollection = useAppStore((s) => s.moveToCollection)
 
   const reduced = useReducedMotion()
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState('')
-  const [localCollections, setLocalCollections] = useState<{ id: string; name: string }[]>([])
 
   const allCollections = useMemo(
-    () => [...COLLECTIONS, ...localCollections.map((c) => ({ ...c, description: 'Created in this session · demo data', color: 'neutral' }))],
-    [localCollections],
+    () => [...COLLECTIONS, ...userCollections],
+    [userCollections],
   )
 
   /* Every output, with its filing status. Seed outputs carry a
@@ -61,11 +150,9 @@ export function CollectionsPage() {
   const createCollection = () => {
     const trimmed = name.trim()
     if (!trimmed) return
-    const id = 'c-' + trimmed.toLowerCase().replace(/[^a-z0-9]+/g, '-')
-    setLocalCollections((cs) => (cs.some((c) => c.id === id) ? cs : [...cs, { id, name: trimmed }]))
+    addCollection(trimmed)
     setName('')
     setCreating(false)
-    pushToast(`Collection "${trimmed}" created`, 'success')
   }
 
   return (
@@ -78,7 +165,7 @@ export function CollectionsPage() {
         )}
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-base font-semibold tracking-tight">{active ? active.name : 'Collections'}</h1>
-          <p className="font-mono text-3xs text-ink-faint">{active ? active.description : 'organised outputs · demo data'}</p>
+          <p className="font-mono text-3xs text-ink-faint">{active ? active.description : 'organised outputs · saved locally'}</p>
         </div>
         {!active && (
           <button
@@ -124,7 +211,7 @@ export function CollectionsPage() {
 
         <div className={cn('grid gap-4', !active && 'sm:grid-cols-2')}>
           {lists.map((c) => {
-            const outs = entries.filter((e) => e.collectionId === c.id || e.collectionId === c.name)
+            const outs = entries.filter((e) => e.collectionId === c.id)
             return (
               <article key={c.id} className="rounded-xl border border-line bg-surface p-5 transition-colors hover:border-line-strong">
                 <div className="mb-1 flex items-center gap-2">
@@ -156,7 +243,15 @@ export function CollectionsPage() {
                             <ArrowRight size={12} className="shrink-0 text-ink-faint" aria-hidden />
                           </button>
                           {active && (
-                            <span className="shrink-0 font-mono text-3xs text-ink-faint">{clockTime(o.createdAt)}</span>
+                            <>
+                              <span className="shrink-0 font-mono text-3xs text-ink-faint">{clockTime(o.createdAt)}</span>
+                              <FilePicker
+                                value={c.id}
+                                options={allCollections}
+                                onPick={(id) => moveToCollection(t.id, id)}
+                                label={`Move "${o.title}" to another collection`}
+                              />
+                            </>
                           )}
                         </div>
                       </li>
@@ -182,15 +277,12 @@ export function CollectionsPage() {
                     <button type="button" onClick={() => navigate(`/app/output/${t.id}/${o.id}`)} className="min-w-0 flex-1 truncate text-left text-sm hover:text-accent">
                       {o.title}
                     </button>
-                    <select
-                      aria-label={`Save "${o.title}" to a collection`}
+                    <FilePicker
                       value=""
-                      onChange={(e) => { if (e.target.value) saveToCollection(t.id, o.id, e.target.value) }}
-                      className="h-7 rounded-md border border-line bg-canvas-deep px-1.5 text-2xs text-ink-muted focus:border-accent focus:outline-none"
-                    >
-                      <option value="">Save to…</option>
-                      {allCollections.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
+                      options={allCollections}
+                      onPick={(id) => moveToCollection(t.id, id)}
+                      label={`Save "${o.title}" to a collection`}
+                    />
                   </li>
                 ))}
               </ul>

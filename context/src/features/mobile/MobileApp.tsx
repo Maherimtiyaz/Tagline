@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowLeft, Check, Home, Inbox, Settings as SettingsIcon, History as HistoryIcon, X } from 'lucide-react'
+import { ArrowLeft, Check, Download, Home, Inbox, Settings as SettingsIcon, History as HistoryIcon, X } from 'lucide-react'
 import type { OutputType } from '../../data/types'
 import { useAppStore } from '../../lib/store'
 import { analyzeThought } from '../../lib/mockAI'
 import { OUTPUT_LABEL } from '../../lib/outputMeta'
+import { downloadExport } from '../../lib/exporters'
 import { VoiceCapture } from '../voice/VoiceCapture'
 import { ThoughtCard } from '../../components/ui/ThoughtCard'
 import { Badge } from '../../components/ui/Badge'
@@ -242,10 +243,10 @@ export function MobileApp() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => makeIt('tasks')}
-                  className="flex min-h-11 flex-1 items-center justify-center rounded-lg border border-line text-sm text-ink-muted"
+                  onClick={() => { downloadExport(output, 'text'); pushToast('Downloaded', 'success') }}
+                  className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-lg border border-line text-sm text-ink-muted"
                 >
-                  Also as tasks
+                  <Download size={14} /> Export
                 </button>
               </div>
             </motion.section>

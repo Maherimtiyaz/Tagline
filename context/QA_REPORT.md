@@ -29,3 +29,25 @@ Verified via `tsc + vite build` (clean) and a preview-server route sweep
 - [x] Build clean, code-split bundles, no TODO/FIXME debt
 
 **Result: Phase 10 complete — all 10 phases of the README build order are done.**
+
+---
+
+## Phase 11 — Export & Integration (added beyond the README's 10-phase order)
+
+**Goal:** make outputs leave Context in the format their destination actually expects (spec §27: "make the output immediately usable").
+
+### Shipped
+- `src/lib/exporters.ts` — pure, deterministic serializers:
+  - Plain text (all types), Markdown (tasks → `- [ ]` checklist syntax)
+  - `.eml` (RFC-5322 headers + CRLF body) for email outputs
+  - Slack Block Kit JSON (`{text, blocks:[section…, divider…]}`) for slack outputs
+  - `formatsFor(type)` gates offered formats per output type; `downloadExport()` does a Blob/anchor download with Safari-safe URL revocation and slugified filenames.
+- `OutputEditor`: old single-format markdown export replaced by an accessible **ExportMenu** popover (`role=menu`, Esc closes + focus returns to trigger, click-outside dismiss). Exports include unsaved textarea edits; added "Copy as Markdown".
+- `MobileApp`: bottom-sheet secondary action now performs a real export (was a no-op placeholder path).
+- Verified via tsx harness: eml headers correct, Block Kit parses as valid JSON, tasks→checklist conversion, format gating (`email: text,markdown,eml` / `slack: text,markdown,blockkit`).
+
+### Bonus defect fixed during lint pass
+- `ThoughtEditor.tsx` had a **rules-of-hooks violation**: `useMemo(slashMatches)` was called after an early `if (!thought) return null`. Hoisted it above the guard (lint error → 0 errors). Removed dead `void AnimatePresence` shim from OutputEditor.
+
+### Build/lint status
+- `npm run build` ✓ (tsc -b + vite, 1.4s); `npm run lint` → 0 errors, 5 pre-existing warnings; all 7 routes serve 200 on preview.

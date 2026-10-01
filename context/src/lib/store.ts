@@ -1,13 +1,14 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import type {
+  Collection,
   GeneratedOutput,
   OutputType,
   Thought,
   TimelineEvent,
   ToneId,
 } from '../data/types'
-import { SEED_THOUGHTS, SEED_TIMELINE } from '../data/mock'
+import { COLLECTIONS, SEED_THOUGHTS, SEED_TIMELINE } from '../data/mock'
 import { analyzeThought, generateOutput, retune, uid } from './mockAI'
 
 /* ============================================================
@@ -51,6 +52,8 @@ const safeStorage = {
 interface PersistedShape {
   thoughts: Thought[]
   timeline: TimelineEvent[]
+  /** User-created collections (Phase 12) — now survive refresh. */
+  userCollections?: Collection[]
   onboardingSeen?: boolean
 }
 
@@ -65,9 +68,14 @@ function mergeWithSeeds(persisted?: PersistedShape | null): PersistedShape {
   const extraEvents = (Array.isArray(persisted.timeline) ? persisted.timeline : []).filter(
     (e) => e && typeof e.id === 'string' && !seedTimelineIds.has(e.id),
   )
+  const seedCollectionIds = new Set(COLLECTIONS.map((c) => c.id))
+  const extraCollections = (Array.isArray(persisted.userCollections) ? persisted.userCollections : []).filter(
+    (c) => c && typeof c.id === 'string' && !seedCollectionIds.has(c.id),
+  )
   return {
     thoughts: [...extras].sort((a, b) => b.createdAt - a.createdAt).concat(seeds),
     timeline: [...SEED_TIMELINE, ...extraEvents].sort((a, b) => a.at - b.at),
+    userCollections: extraCollections,
     onboardingSeen: persisted.onboardingSeen === true,
   }
 }
@@ -90,6 +98,8 @@ export interface EditSnapshot {
 interface AppState {
   thoughts: Thought[]
   timeline: TimelineEvent[]
+  /** Collections the user created in this demo (persisted, Phase 12). */
+  userCollections: Collection[]
   selectedThoughtId: string | null
   paletteOpen: boolean
   toasts: Toast[]
@@ -124,6 +134,11 @@ interface AppState {
   editOutputBody: (thoughtId: string, outputId: string, body: string) => void
   saveToCollection: (thoughtId: string, outputId: string, collectionName: string) => void
 
+  /** Create a user collection (idempotent on slug). Returns the collection. */
+  addCollection: (name: string) => Collection
+  /** Move an already-filed thought to another collection (or unfile with ''). */
+  moveToCollection: (thoughtId: string, collectionId: string) => void
+
   /** Undo/redo over body edits + tone changes for one output. */
   undoEdit: (outputId: string) => void
   redoEdit: (outputId: string) => void
@@ -138,7 +153,14 @@ interface AppState {
 const seedState = () => ({
   thoughts: SEED_THOUGHTS.map((t) => ({ ...t, outputs: [...t.outputs] })),
   timeline: [...SEED_TIMELINE],
+  userCollections: [] as Collection[],
 })
+
+/** Deterministic palette rotation for user-created collections. */
+const COLLECTION_COLORS: Collection['color'][] = ['accent', 'blue', 'emerald', 'amber', 'coral']
+
+export const collectionSlug = (name: string) =>
+  'cl-' + name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
 
 export const useAppStore = create<AppState>()(
   persist(
@@ -150,6 +172,7 @@ export const useAppStore = create<AppState>()(
       inboxView: 'inbox',
       searchQuery: '',
       editHistory: {},
+      userCollections: [] as Collection[],
       onboardingSeen: false,
 
       select: (id) => set({ selectedThoughtId: id }),
@@ -395,8 +418,27 @@ export const useAppStore = create<AppState>()(
 
   saveToCollection: (thoughtId, outputId, collectionName) => {
     void outputId
+    /* Resolve by id first, then by display name — callers pass either
+       (CollectionsPage sends ids, OutputEditor historically sent names). */
+    const known = [...COLLECTIONS, ...get().userCollections].find(
+      (c) => c.id === collectionName || c.name === collectionName,
+    )
+    const resolved = known?.id ?? collectionSlug(collectionName)
+    if (!known) {
+      set((s) => ({
+        userCollections: [
+          ...s.userCollections,
+          {
+            id: resolved,
+            name: collectionName,
+            description: 'Created from the output editor · demo data',
+            color: COLLECTION_COLORS[s.userCollections.length % COLLECTION_COLORS.length],
+          },
+        ],
+      }))
+    }
     set((s) => ({
-      thoughts: s.thoughts.map((t) => (t.id === thoughtId ? { ...t, collectionId: collectionName } : t)),
+      thoughts: s.thoughts.map((t) => (t.id === thoughtId ? { ...t, collectionId: resolved } : t)),
       timeline: [
         ...s.timeline,
         {
@@ -404,11 +446,49 @@ export const useAppStore = create<AppState>()(
           thoughtId,
           at: Date.now(),
           kind: 'save',
-          label: `Saved to ${collectionName}`,
+          label: `Saved to ${known?.name ?? collectionName}`,
         },
       ],
     }))
-    get().pushToast(`Saved to ${collectionName}`, 'success')
+    get().pushToast(`Saved to ${known?.name ?? collectionName}`, 'success')
+  },
+
+  addCollection: (name) => {
+    const trimmed = name.trim()
+    const id = collectionSlug(trimmed)
+    const existing = [...COLLECTIONS, ...get().userCollections].find((c) => c.id === id)
+    if (existing) return existing
+    const collection: Collection = {
+      id,
+      name: trimmed,
+      description: 'Created in this demo · saved locally',
+      color: COLLECTION_COLORS[get().userCollections.length % COLLECTION_COLORS.length],
+    }
+    set((s) => ({ userCollections: [...s.userCollections, collection] }))
+    get().pushToast(`Collection "${trimmed}" created`, 'success')
+    return collection
+  },
+
+  moveToCollection: (thoughtId, collectionId) => {
+    const thought = get().thoughts.find((t) => t.id === thoughtId)
+    if (!thought || thought.collectionId === collectionId) return
+    const label = collectionId
+      ? ([...COLLECTIONS, ...get().userCollections].find((c) => c.id === collectionId)?.name ?? collectionId)
+      : null
+    set((s) => ({
+      thoughts: s.thoughts.map((t) =>
+        t.id === thoughtId ? { ...t, collectionId: collectionId || undefined } : t,
+      ),
+      ...(label
+        ? {
+            timeline: [
+              ...s.timeline,
+              { id: uid('ev'), thoughtId, at: Date.now(), kind: 'save' as const, label: `Moved to ${label}` },
+            ],
+          }
+        : {}),
+    }))
+    get().pushToast(label ? `Moved to ${label}` : 'Removed from collection', 'info')
   },
 
   pushToast: (message, tone = 'success') => {
@@ -425,7 +505,7 @@ export const useAppStore = create<AppState>()(
     } catch {
       /* ignore */
     }
-    set({ ...seedState(), selectedThoughtId: null, inboxView: 'inbox' as const, editHistory: {}, onboardingSeen: true })
+    set({ ...seedState(), selectedThoughtId: null, inboxView: 'inbox' as const, editHistory: {}, userCollections: [], onboardingSeen: true })
     get().pushToast('Demo reset to its initial state', 'info')
   },
     }),
@@ -436,6 +516,7 @@ export const useAppStore = create<AppState>()(
       partialize: (s): PersistedShape => ({
         thoughts: s.thoughts,
         timeline: s.timeline,
+        userCollections: s.userCollections,
         onboardingSeen: s.onboardingSeen,
       }),
       merge: (persisted, current) => ({
