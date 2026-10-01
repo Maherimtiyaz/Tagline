@@ -1,8 +1,8 @@
 import { useMemo, useRef, useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowRight, Check, ChevronDown, Plus } from 'lucide-react'
-import type { GeneratedOutput, Thought } from '../../data/types'
+import { ArrowRight, Check, ChevronDown, Pencil, Plus, Trash2, X } from 'lucide-react'
+import type { Collection, GeneratedOutput, Thought } from '../../data/types'
 import { COLLECTIONS } from '../../data/mock'
 import { useAppStore } from '../../lib/store'
 import { useReducedMotion } from '../../hooks/useReducedMotion'
@@ -16,6 +16,9 @@ import { cn } from '../../lib/cn'
    created ones survive refresh; filing happens by collection
    id via an accessible picker (no nested buttons); filed
    outputs can be moved or unfiled inline.
+   Phase 13: full CRUD — rename and delete (with inline confirm)
+   for user-created collections; seeds stay immutable. Deleting
+   never destroys outputs — they fall back to the Unfiled list.
    ============================================================ */
 
 const DOT: Record<string, string> = {
@@ -117,6 +120,83 @@ function FilePicker({
   )
 }
 
+/** Inline rename + delete (with confirm) for user-created collections. */
+function CollectionActions({ collection }: { collection: Collection }) {
+  const isSeed = COLLECTIONS.some((c) => c.id === collection.id)
+  const renameCollection = useAppStore((s) => s.renameCollection)
+  const removeCollection = useAppStore((s) => s.removeCollection)
+  const [editing, setEditing] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+  const [draft, setDraft] = useState(collection.name)
+
+  if (isSeed) return null
+
+  const commit = () => {
+    renameCollection(collection.id, draft)
+    setEditing(false)
+  }
+
+  return (
+    <div className="ml-2 flex shrink-0 items-center gap-0.5">
+      {editing ? (
+        <form
+          onSubmit={(e) => { e.preventDefault(); commit() }}
+          className="flex items-center gap-1"
+        >
+          <label className="sr-only" htmlFor={`rename-${collection.id}`}>Rename collection</label>
+          <input
+            id={`rename-${collection.id}`}
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Escape') { setEditing(false); setDraft(collection.name) } }}
+            onBlur={commit}
+            className="h-6 w-32 rounded border border-accent bg-canvas-deep px-1.5 text-xs focus:outline-none"
+          />
+        </form>
+      ) : confirming ? (
+        <span className="flex items-center gap-1 font-mono text-3xs text-ink-subtle">
+          Delete? Outputs stay as unfiled.
+          <button
+            type="button"
+            autoFocus
+            onClick={() => { removeCollection(collection.id); setConfirming(false) }}
+            className="rounded bg-coral px-1.5 py-0.5 font-sans text-2xs font-medium text-white transition-opacity hover:opacity-90"
+          >
+            Delete
+          </button>
+          <button
+            type="button"
+            onClick={() => setConfirming(false)}
+            className="rounded px-1.5 py-0.5 text-2xs text-ink-muted transition-colors hover:text-ink"
+          >
+            Keep
+          </button>
+        </span>
+      ) : (
+        <>
+          <button
+            type="button"
+            aria-label={`Rename collection ${collection.name}`}
+            onClick={() => { setDraft(collection.name); setEditing(true) }}
+            className="rounded p-1 text-ink-faint transition-colors hover:bg-surface-hover hover:text-ink"
+          >
+            <Pencil size={11} aria-hidden />
+          </button>
+          <button
+            type="button"
+            aria-label={`Delete collection ${collection.name}`}
+            onClick={() => setConfirming(true)}
+            className="rounded p-1 text-ink-faint transition-colors hover:bg-surface-hover hover:text-coral"
+          >
+            <Trash2 size={11} aria-hidden />
+          </button>
+        </>
+      )}
+    </div>
+  )
+}
+
 export function CollectionsPage() {
   const { id: collectionId } = useParams()
   const navigate = useNavigate()
@@ -145,6 +225,10 @@ export function CollectionsPage() {
   )
 
   const active = collectionId ? allCollections.find((c) => c.id === collectionId) : undefined
+  /* Deleting the collection we're viewing → bounce back to the index. */
+  useEffect(() => {
+    if (collectionId && !active) navigate('/app/collections', { replace: true })
+  }, [collectionId, active, navigate])
   const lists = active ? [active] : allCollections
 
   const createCollection = () => {
@@ -216,13 +300,14 @@ export function CollectionsPage() {
               <article key={c.id} className="rounded-xl border border-line bg-surface p-5 transition-colors hover:border-line-strong">
                 <div className="mb-1 flex items-center gap-2">
                   <span className={cn('h-2 w-2 shrink-0 rounded-full', DOT[c.color] ?? DOT.neutral)} aria-hidden />
-                  <h2 className="text-sm font-semibold">
+                  <h2 className="min-w-0 truncate text-sm font-semibold">
                     {active ? 'Outputs' : (
                       <button type="button" onClick={() => navigate(`/app/collections/${c.id}`)} className="rounded transition-colors hover:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
                         {c.name}
                       </button>
                     )}
                   </h2>
+                  {!active && <CollectionActions collection={c} />}
                   <span className="ml-auto font-mono text-3xs text-ink-faint">{outs.length}</span>
                 </div>
                 {!active && <p className="mb-3 text-xs text-ink-muted">{c.description}</p>}

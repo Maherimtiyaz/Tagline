@@ -1,9 +1,11 @@
 import { useState } from 'react'
+import type { ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
   Archive,
   Command,
   FileText,
+  FolderPlus,
   Inbox as InboxIcon,
   LayoutTemplate,
   Layers,
@@ -14,7 +16,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
 } from 'lucide-react'
-import { useAppStore } from '../../lib/store'
+import { useAppStore, collectionSlug } from '../../lib/store'
 import { useThemeStore } from '../../lib/theme'
 import { COLLECTIONS } from '../../data/mock'
 import { Kbd } from '../ui/Kbd'
@@ -162,6 +164,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   </span>
                 </button>
               ))}
+              <NewCollectionInline navigate={navigate} />
             </>
           )}
         </nav>
@@ -265,6 +268,54 @@ function Dot({ color }: { color: string }) {
     amber: 'bg-amber', coral: 'bg-coral', neutral: 'bg-ink-faint',
   }
   return <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', map[color])} aria-hidden />
+}
+
+/** Sidebar affordance (Phase 13): create a collection without leaving
+ *  the current screen; navigates straight into it so filing is one step away. */
+function NewCollectionInline({ navigate }: { navigate: (path: string) => void }) {
+  const addCollection = useAppStore((s) => s.addCollection)
+  const [open, setOpen] = useState(false)
+  const [name, setName] = useState('')
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => { setName(''); setOpen(true) }}
+        className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-sm text-ink-subtle transition-colors hover:bg-surface-hover hover:text-ink"
+      >
+        <FolderPlus size={14} className="shrink-0" aria-hidden />
+        New collection…
+      </button>
+    )
+  }
+
+  const submit = () => {
+    const trimmed = name.trim()
+    if (!trimmed) { setOpen(false); return }
+    const c = addCollection(trimmed)
+    setOpen(false)
+    navigate(`/app/collections/${collectionSlug(c.name)}`)
+  }
+
+  return (
+    <form
+      onSubmit={(e) => { e.preventDefault(); submit() }}
+      className="px-2 py-1"
+    >
+      <label className="sr-only" htmlFor="sidebar-collection-name">New collection name</label>
+      <input
+        id="sidebar-collection-name"
+        autoFocus
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Escape') setOpen(false) }}
+        onBlur={() => { if (!name.trim()) setOpen(false) }}
+        placeholder="Collection name"
+        className="h-7 w-full rounded border border-line bg-canvas-deep px-2 text-xs placeholder:text-ink-faint focus:border-accent focus:outline-none"
+      />
+    </form>
+  )
 }
 
 function Avatar() {
