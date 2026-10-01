@@ -183,6 +183,20 @@ interface AppState {
   undoEdit: (outputId: string) => void
   redoEdit: (outputId: string) => void
 
+  /* ---- Phase 20: multi-select & bulk actions (spec §35) ---- */
+  selectedIds: string[]
+  toggleSelected: (id: string) => void
+  setSelection: (ids: string[]) => void
+  clearSelection: () => void
+  /** Bulk-archive active thoughts. Returns how many were archived. */
+  bulkArchive: (ids: string[]) => number
+  /** Bulk-restore archived thoughts back to their pre-archive status. */
+  bulkRestore: (ids: string[]) => number
+  /** Bulk-delete; refuses when any selection still has outputs (data safety). */
+  bulkDelete: (ids: string[]) => { deleted: number; refused: number }
+  /** File every selected thought into a collection (by id or name). */
+  bulkSaveToCollection: (ids: string[], collectionName: string) => number
+
   /** Phase 19 — archive the current body as a named version snapshot. */
   saveVersion: (thoughtId: string, outputId: string, label?: string) => OutputVersion | null
   /** Restore an archived snapshot (the current body is re-archived first). */
@@ -214,6 +228,7 @@ export const useAppStore = create<AppState>()(
     (set, get) => ({
       ...seedState(),
       selectedThoughtId: null,
+      selectedIds: [],
       paletteOpen: false,
       toasts: [],
       inboxView: 'inbox',
@@ -224,6 +239,86 @@ export const useAppStore = create<AppState>()(
       demoVisits: 0,
 
       select: (id) => set({ selectedThoughtId: id }),
+
+      /* ---- Phase 20: multi-select & bulk actions (spec §35) ---- */
+      toggleSelected: (id) =>
+        set((s) => ({
+          selectedIds: s.selectedIds.includes(id)
+            ? s.selectedIds.filter((x) => x !== id)
+            : [...s.selectedIds, id],
+        })),
+      setSelection: (ids) => set({ selectedIds: ids }),
+      clearSelection: () => set({ selectedIds: [] }),
+
+      bulkArchive: (ids) => {
+        const targets = get().thoughts.filter(
+          (t) => ids.includes(t.id) && t.status !== 'archived',
+        )
+        if (targets.length === 0) return 0
+        const now = Date.now()
+        set((s) => ({
+          thoughts: s.thoughts.map((t) =>
+            targets.some((x) => x.id === t.id) ? { ...t, status: 'archived' as const } : t,
+          ),
+          timeline: [
+            ...s.timeline,
+            ...targets.map((t): TimelineEvent => ({
+              id: uid('ev'), thoughtId: t.id, at: now, kind: 'archive', label: 'Archived in bulk',
+            })),
+          ],
+          selectedIds: [],
+        }))
+        get().pushToast(`Archived ${targets.length} thought${targets.length === 1 ? '' : 's'}`, 'info')
+        return targets.length
+      },
+
+      bulkRestore: (ids) => {
+        const targets = get().thoughts.filter((t) => ids.includes(t.id) && t.status === 'archived')
+        if (targets.length === 0) return 0
+        set((s) => ({
+          thoughts: s.thoughts.map((t) =>
+            targets.some((x) => x.id === t.id)
+              ? { ...t, status: (t.outputs.length > 0 ? 'processed' : 'raw') as Thought['status'] }
+              : t,
+          ),
+          selectedIds: [],
+        }))
+        get().pushToast(`Restored ${targets.length} thought${targets.length === 1 ? '' : 's'}`, 'success')
+        return targets.length
+      },
+
+      bulkDelete: (ids) => {
+        const all = get().thoughts
+        const doomed = all.filter((t) => ids.includes(t.id) && t.outputs.length === 0)
+        const refused = ids.length - doomed.length
+        if (doomed.length > 0) {
+          set((s) => ({
+            thoughts: s.thoughts.filter((t) => !doomed.some((x) => x.id === t.id)),
+            selectedIds: [],
+          }))
+        }
+        if (refused > 0) {
+          /* Data safety: never silently destroy generated outputs. */
+          get().pushToast(
+            `Deleted ${doomed.length} · kept ${refused} with outputs (archive instead)`,
+            'info',
+          )
+        } else if (doomed.length > 0) {
+          get().pushToast(`Deleted ${doomed.length} draft${doomed.length === 1 ? '' : 's'}`, 'info')
+        }
+        return { deleted: doomed.length, refused }
+      },
+
+      bulkSaveToCollection: (ids, collectionName) => {
+        const targets = get().thoughts.filter((t) => ids.includes(t.id))
+        if (targets.length === 0) return 0
+        /* Delegate per-thought so collection auto-creation, timeline
+           events and toasts reuse the exact Phase 12 semantics. */
+        targets.forEach((t) => get().saveToCollection(t.id, '', collectionName))
+        set({ selectedIds: [] })
+        return targets.length
+      },
+
       setPalette: (open) => set({ paletteOpen: open }),
       setInboxView: (view) => set({ inboxView: view }),
       dismissOnboarding: () => set({ onboardingSeen: true }),
@@ -665,7 +760,7 @@ export const useAppStore = create<AppState>()(
     } catch {
       /* ignore */
     }
-    set({ ...seedState(), selectedThoughtId: null, inboxView: 'inbox' as const, editHistory: {}, userCollections: [], onboardingSeen: true, demoVisits: 0 })
+    set({ ...seedState(), selectedThoughtId: null, selectedIds: [], inboxView: 'inbox' as const, editHistory: {}, userCollections: [], onboardingSeen: true, demoVisits: 0 })
     get().pushToast('Demo reset to its initial state', 'info')
   },
     }),

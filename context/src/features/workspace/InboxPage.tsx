@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { CornerDownLeft, LayoutTemplate, Plus, Search, X } from 'lucide-react'
+import { CheckSquare, CornerDownLeft, LayoutTemplate, Plus, Search, Square, X } from 'lucide-react'
 import { useAppStore, type InboxView } from '../../lib/store'
 import { TEMPLATES } from '../../data/mock'
 import { useReducedMotion } from '../../hooks/useReducedMotion'
 import { timeAgo } from '../../hooks/useTransformPipeline'
 import { ThoughtCard } from '../../components/ui/ThoughtCard'
+import { BulkActionBar } from '../../components/ui/BulkActionBar'
 import { EmptyState } from '../../components/ui/EmptyState'
 import { Skeleton } from '../../components/ui/Skeleton'
 import { Badge } from '../../components/ui/Badge'
@@ -61,6 +62,12 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
   const transform = useAppStore((s) => s.transform)
   const deleteThought = useAppStore((s) => s.deleteThought)
   const setPalette = useAppStore((s) => s.setPalette)
+  /* Phase 20 — multi-select (spec §35). Selection lives in the store so
+     it survives view switches; actions act on ids, never indices. */
+  const selectedIds = useAppStore((s) => s.selectedIds)
+  const toggleSelected = useAppStore((s) => s.toggleSelected)
+  const setSelection = useAppStore((s) => s.setSelection)
+  const clearSelection = useAppStore((s) => s.clearSelection)
   const navigate = useNavigate()
   const reduced = useReducedMotion()
   const [query, setQuery] = useState('')
@@ -127,6 +134,20 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
 
   const today = scoped.filter((t) => Date.now() - t.createdAt < 24 * 3600_000)
   const earlier = scoped.filter((t) => Date.now() - t.createdAt >= 24 * 3600_000)
+
+  /* Visible ids for bulk actions — "Select all" only ever touches what
+     the user can see in this view, never hidden/stale selections. */
+  const visibleIds = useMemo(() => scoped.map((t) => t.id), [scoped])
+  const visibleSelected = useMemo(
+    () => selectedIds.filter((id) => visibleIds.includes(id)),
+    [selectedIds, visibleIds],
+  )
+  const allVisibleSelected = visibleIds.length > 0 && visibleSelected.length === visibleIds.length
+  const toggleAll = () => {
+    if (allVisibleSelected) clearSelection()
+    else setSelection(visibleIds)
+  }
+
   const subtitle =
     view === 'inbox'
       ? `${scoped.length} unprocessed · demo data`
@@ -135,13 +156,34 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
         : `${nonArchived.filter((t) => t.status === 'raw').length} unprocessed of ${scoped.length} · demo data`
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-3xl flex-col">
+    <div className="relative mx-auto flex h-full w-full max-w-3xl flex-col">
       {/* header */}
       <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-line px-4 py-3 md:px-6">
         <div className="min-w-0 flex-1">
           <h1 className="text-base font-semibold tracking-tight">{meta.title}</h1>
-          <p className="font-mono text-3xs tabular-nums text-ink-subtle">{subtitle}</p>
+          <p className="font-mono text-3xs tabular-nums text-ink-subtle">
+            {subtitle}
+            {visibleSelected.length > 0 && (
+              <span className="ml-2 text-accent" aria-live="polite">
+                · {visibleSelected.length} selected
+              </span>
+            )}
+          </p>
         </div>
+        {/* Phase 20: select-all toggle for the visible list */}
+        {scoped.length > 0 && !query.trim() && (
+          <button
+            type="button"
+            onClick={toggleAll}
+            role="checkbox"
+            aria-checked={allVisibleSelected ? true : visibleSelected.length > 0 ? 'mixed' : false}
+            aria-label={allVisibleSelected ? 'Deselect all thoughts in view' : 'Select all thoughts in view'}
+            title={allVisibleSelected ? 'Deselect all' : 'Select all'}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-line text-ink-faint transition-colors hover:border-accent-line hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-line"
+          >
+            {allVisibleSelected ? <CheckSquare size={14} aria-hidden /> : <Square size={14} aria-hidden />}
+          </button>
+        )}
         <label className="relative flex-1 basis-48 md:basis-64">
           <span className="sr-only">Search thoughts and outputs</span>
           <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-faint" aria-hidden />
@@ -260,6 +302,7 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
                             onOpen={() => navigate(`/app/thought/${t.id}`)}
                             onTransform={() => { transform(t.id, 'email'); navigate(`/app/thought/${t.id}`) }}
                             onDelete={view === 'drafts' ? () => deleteThought(t.id) : undefined}
+                            selection={{ checked: selectedIds.includes(t.id), onToggle: () => toggleSelected(t.id) }}
                           />
                         </motion.div>
                       ))}
@@ -274,6 +317,9 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
           </div>
         )}
       </div>
+
+      {/* Phase 20: floating bulk-action bar (spec §35) */}
+      <BulkActionBar ids={visibleSelected} />
 
       <button type="button" className="sr-only" onClick={() => setPalette(true)}>Open command palette</button>
     </div>

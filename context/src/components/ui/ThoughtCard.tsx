@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Mic, Image as ImageIcon, Type, FileDown } from 'lucide-react'
+import { Check, Mic, Image as ImageIcon, Type, FileDown } from 'lucide-react'
 import type { SourceType } from '../../data/types'
 import { timeAgo } from '../../hooks/useTransformPipeline'
 import { useAppStore } from '../../lib/store'
@@ -30,6 +30,7 @@ export function ThoughtCard({
   onOpen,
   onTransform,
   onDelete,
+  selection,
 }: {
   id: string
   text: string
@@ -41,6 +42,8 @@ export function ThoughtCard({
   onTransform: () => void
   /** When provided (Drafts view), replaces Archive with Delete. */
   onDelete?: () => void
+  /** Phase 20 multi-select — when provided, shows a checkbox affordance. */
+  selection?: { checked: boolean; onToggle: () => void }
 }) {
   const archive = useAppStore((s) => s.archiveThought)
   const preview = useMemo(() => (text.length > 150 ? text.slice(0, 150) + '…' : text), [text])
@@ -51,12 +54,33 @@ export function ThoughtCard({
       className={cn(
         'group relative rounded-lg border border-line bg-surface p-4 transition-colors duration-[var(--duration-fast)]',
         'hover:border-line-strong focus-within:border-accent-line',
+        selection?.checked && 'border-accent-line bg-accent-soft/40',
       )}
     >
+      {/* Phase 20: multi-select checkbox — always visible when the view
+          enables selection, so the affordance never hides on touch. */}
+      {selection && (
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={selection.checked}
+          aria-label={`Select thought: ${preview.slice(0, 40) || 'empty draft'}`}
+          onClick={selection.onToggle}
+          className={cn(
+            'absolute left-3 top-3 flex h-5 w-5 items-center justify-center rounded-md border transition-colors',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-line',
+            selection.checked
+              ? 'border-accent bg-accent text-accent-ink'
+              : 'border-line-strong bg-surface text-transparent hover:border-accent-line',
+          )}
+        >
+          <Check size={12} aria-hidden />
+        </button>
+      )}
       <button
         type="button"
         onClick={onOpen}
-        className="block w-full cursor-pointer text-left focus-visible:outline-none"
+        className={cn('block w-full cursor-pointer text-left focus-visible:outline-none', selection && 'pl-7')}
         aria-label={`Open thought: ${preview.slice(0, 60)}`}
       >
         <p className={cn('text-sm leading-relaxed', status === 'archived' ? 'text-ink-faint line-through' : 'text-ink')}>
