@@ -34,10 +34,13 @@ export function CommandPalette({ onNavigate }: { onNavigate?: (path: string) => 
   const setOpen = useAppStore((s) => s.setPalette)
   const addThought = useAppStore((s) => s.addThought)
   const select = useAppStore((s) => s.select)
+  const addCollection = useAppStore((s) => s.addCollection)
   const toggleTheme = useThemeStore((s) => s.toggleTheme)
   const pushToast = useAppStore((s) => s.pushToast)
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
+  /** When true, the palette is in "create collection" input mode (Phase 13). */
+  const [creatingCollection, setCreatingCollection] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const titleId = useId()
 
@@ -82,6 +85,21 @@ export function CommandPalette({ onNavigate }: { onNavigate?: (path: string) => 
       icon: <FileText size={15} />,
       group: 'Navigate',
       run: () => onNavigate?.('/app'),
+    },
+    {
+      id: 'collections',
+      label: 'Open collections',
+      icon: <Layers size={15} />,
+      group: 'Navigate',
+      run: () => onNavigate?.('/app/collections'),
+    },
+    {
+      id: 'new-collection',
+      label: 'Create collection…',
+      hint: 'enter',
+      icon: <FolderPlus size={15} />,
+      group: 'Actions',
+      run: () => setCreatingCollection(true),
     },
     {
       id: 'theme',

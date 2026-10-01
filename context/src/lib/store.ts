@@ -136,6 +136,10 @@ interface AppState {
 
   /** Create a user collection (idempotent on slug). Returns the collection. */
   addCollection: (name: string) => Collection
+  /** Rename a user collection (seed collections are immutable). */
+  renameCollection: (collectionId: string, name: string) => boolean
+  /** Delete a user collection; its filed thoughts become unfiled. */
+  removeCollection: (collectionId: string) => boolean
   /** Move an already-filed thought to another collection (or unfile with ''). */
   moveToCollection: (thoughtId: string, collectionId: string) => void
 
@@ -467,6 +471,38 @@ export const useAppStore = create<AppState>()(
     set((s) => ({ userCollections: [...s.userCollections, collection] }))
     get().pushToast(`Collection "${trimmed}" created`, 'success')
     return collection
+  },
+
+  renameCollection: (collectionId, name) => {
+    const trimmed = name.trim()
+    if (!trimmed) return false
+    /* Seed collections are immutable in the demo. */
+    if (COLLECTIONS.some((c) => c.id === collectionId)) return false
+    const target = get().userCollections.find((c) => c.id === collectionId)
+    if (!target || target.name === trimmed) return false
+    set((s) => ({
+      userCollections: s.userCollections.map((c) =>
+        c.id === collectionId ? { ...c, name: trimmed } : c,
+      ),
+    }))
+    get().pushToast(`Renamed to "${trimmed}"`, 'success')
+    return true
+  },
+
+  removeCollection: (collectionId) => {
+    /* Seed collections are immutable in the demo. */
+    if (COLLECTIONS.some((c) => c.id === collectionId)) return false
+    const target = get().userCollections.find((c) => c.id === collectionId)
+    if (!target) return false
+    /* Unfile every thought that lived in it — outputs are never deleted. */
+    set((s) => ({
+      userCollections: s.userCollections.filter((c) => c.id !== collectionId),
+      thoughts: s.thoughts.map((t) =>
+        t.collectionId === collectionId ? { ...t, collectionId: undefined } : t,
+      ),
+    }))
+    get().pushToast(`Deleted "${target.name}" · its outputs moved to Unfiled`, 'info')
+    return true
   },
 
   moveToCollection: (thoughtId, collectionId) => {
