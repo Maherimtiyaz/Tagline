@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowDown, ArrowRight, Check, Copy, Download, GitBranch, Save } from 'lucide-react'
-import type { TimelineKind } from '../../data/types'
+import { ArrowDown, ArrowRight, Check, Copy, Download, GitBranch, History, Save } from 'lucide-react'
+import type { TimelineEvent, TimelineKind } from '../../data/types'
 import { useAppStore } from '../../lib/store'
 import { clockTime, dayLabel } from '../../hooks/useTransformPipeline'
 import { SEED_TIMELINE, SEED_THOUGHTS } from '../../data/mock'
@@ -21,6 +21,7 @@ const KIND_ICON: Record<TimelineKind, React.ReactNode> = {
   save: <Save size={12} aria-hidden />,
   export: <Download size={12} aria-hidden />,
   archive: <Check size={12} aria-hidden />,
+  version: <History size={12} aria-hidden />,
 }
 
 function SparkleMini() {
@@ -38,10 +39,36 @@ export function HistoryPage() {
 
   const allEvents = useMemo(() => {
     // include seed events + live store events, deduped by id
-    const map = new Map<string, (typeof timeline)[number]>()
+    const map = new Map<string, TimelineEvent>()
     ;[...SEED_TIMELINE, ...timeline].forEach((e) => map.set(e.id, e))
+    /* Phase 18/19 link — fold archived output snapshots into the global
+       timeline. saveVersion/restoreVersion already emit explicit events
+       with matching labels; those are deduped away so each snapshot
+       appears exactly once, whether it came from a manual save or an
+       automatic tone/format archive. */
+    const seenLabel = new Set(
+      [...map.values()].flatMap((e) =>
+        e.kind === 'save' && e.label.startsWith('Version saved · ') ? [`${e.thoughtId}|${e.at}|${e.label}`] : [],
+      ),
+    )
+    for (const t of thoughts) {
+      for (const o of t.outputs) {
+        for (const v of o.versions ?? []) {
+          const label = `Version saved · ${v.label}`
+          if (seenLabel.has(`${t.id}|${v.at}|${label}`)) continue
+          map.set(`ver-${v.id}`, {
+            id: `ver-${v.id}`,
+            thoughtId: t.id,
+            at: v.at,
+            kind: 'version',
+            label,
+            detail: `${o.title} · ${v.body.split(/\s+/).filter(Boolean).length} words`,
+          })
+        }
+      }
+    }
     return [...map.values()].sort((a, b) => a.at - b.at)
-  }, [timeline])
+  }, [timeline, thoughts])
 
   const byThought = useMemo(() => {
     const groups: { id: string; text: string; events: typeof allEvents }[] = []
@@ -98,7 +125,8 @@ export function HistoryPage() {
                             className={cn(
                               'absolute -left-[26.5px] top-0.5 flex h-4 w-4 items-center justify-center rounded-full border',
                               e.kind === 'transform' ? 'border-accent-line bg-accent-soft text-accent'
-                                : e.kind === 'copy' || e.kind === 'save' || e.kind === 'export' ? 'border-emerald bg-emerald-soft text-emerald'
+                                : e.kind === 'version' ? 'border-accent-line bg-surface text-accent'
+                                  : e.kind === 'copy' || e.kind === 'save' || e.kind === 'export' ? 'border-emerald bg-emerald-soft text-emerald'
                                   : 'border-line bg-surface text-ink-subtle',
                             )}
                             aria-hidden

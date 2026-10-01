@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowRight, Check, ChevronDown, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { ArrowRight, Check, ChevronDown, Pencil, Plus, Trash2 } from 'lucide-react'
 import type { Collection, GeneratedOutput, Thought } from '../../data/types'
 import { COLLECTIONS } from '../../data/mock'
 import { useAppStore } from '../../lib/store'

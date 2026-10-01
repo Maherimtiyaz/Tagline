@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowLeft, Check, Download, Home, Inbox, Settings as SettingsIcon, History as HistoryIcon, X } from 'lucide-react'
+import { ArrowLeft, Check, Download, Home, Inbox, Settings as SettingsIcon, History as HistoryIcon, Share2, X } from 'lucide-react'
 import type { OutputType } from '../../data/types'
 import { useAppStore } from '../../lib/store'
 import { analyzeThought } from '../../lib/mockAI'
 import { OUTPUT_LABEL } from '../../lib/outputMeta'
 import { downloadExport } from '../../lib/exporters'
+import { shareDocument } from '../../lib/share'
 import { VoiceCapture } from '../voice/VoiceCapture'
 import { ThoughtCard } from '../../components/ui/ThoughtCard'
 import { Badge } from '../../components/ui/Badge'
@@ -240,6 +241,21 @@ export function MobileApp() {
                   className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-lg bg-accent text-sm font-medium text-white"
                 >
                   <Check size={14} /> Copy
+                </button>
+                {/* Phase 18 — native share sheet on phones; link-to-clipboard fallback elsewhere */}
+                <button
+                  type="button"
+                  aria-label="Share this output"
+                  onClick={() => {
+                    void shareDocument({ text: output.body, format: 'text', title: output.title }).then((m) => {
+                      if (m === 'native') pushToast('Shared via system sheet', 'success')
+                      else if (m === 'clipboard') pushToast('Share link copied', 'success')
+                      else pushToast('Sharing was cancelled', 'info')
+                    })
+                  }}
+                  className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-lg border border-line text-sm text-ink-muted"
+                >
+                  <Share2 size={14} /> Share
                 </button>
                 <button
                   type="button"

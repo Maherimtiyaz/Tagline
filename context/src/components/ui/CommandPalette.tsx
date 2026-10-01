@@ -3,6 +3,7 @@ import {
   Archive,
   FileText,
   FolderPlus,
+  Layers,
   LayoutTemplate,
   Plus,
   Search,
@@ -41,10 +42,44 @@ export function CommandPalette({ onNavigate }: { onNavigate?: (path: string) => 
   const [active, setActive] = useState(0)
   /** When true, the palette is in "create collection" input mode (Phase 13). */
   const [creatingCollection, setCreatingCollection] = useState(false)
+  const [collectionDraft, setCollectionDraft] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
   const titleId = useId()
 
+  /** Commit (or cancel) the inline "create collection" input mode. */
+  const commitCollection = (commit: boolean) => {
+    const name = collectionDraft.trim()
+    setCreatingCollection(false)
+    setCollectionDraft('')
+    if (commit && name) {
+      addCollection(name)
+      setOpen(false)
+      onNavigate?.('/app/collections')
+    }
+  }
+
   const commands: Command[] = [
+    {
+      id: 'replay-onboarding',
+      label: 'Replay welcome tour',
+      icon: <Sparkles size={15} />,
+      group: 'Settings',
+      run: () => {
+        setOpen(false)
+        useAppStore.getState().showOnboarding()
+      },
+    },
+    {
+      id: 'reset-demo',
+      label: 'Reset demo data',
+      icon: <Archive size={15} />,
+      group: 'Settings',
+      run: () => {
+        useAppStore.getState().resetDemo()
+        pushToast('Demo reset to seed data', 'success')
+        onNavigate?.('/app')
+      },
+    },
     {
       id: 'new',
       label: 'New thought',
@@ -129,6 +164,8 @@ export function CommandPalette({ onNavigate }: { onNavigate?: (path: string) => 
   useEffect(() => {
     if (!open) return
     setQuery('')
+    setCreatingCollection(false)
+    setCollectionDraft('')
     setTimeout(() => inputRef.current?.focus(), 10)
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false)
@@ -155,9 +192,17 @@ export function CommandPalette({ onNavigate }: { onNavigate?: (path: string) => 
           <Search size={15} className="text-ink-subtle" aria-hidden />
           <input
             ref={inputRef}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            value={creatingCollection ? collectionDraft : query}
+            onChange={(e) =>
+              creatingCollection ? setCollectionDraft(e.target.value) : setQuery(e.target.value)
+            }
             onKeyDown={(e) => {
+              if (creatingCollection) {
+                /* Inline "create collection" mode: Enter commits, Esc backs out. */
+                if (e.key === 'Enter') { e.preventDefault(); commitCollection(true) }
+                else if (e.key === 'Escape') { e.preventDefault(); commitCollection(false) }
+                return
+              }
               if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => (a + 1) % Math.max(1, filtered.length)) }
               else if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => (a - 1 + filtered.length) % Math.max(1, filtered.length)) }
               else if (e.key === 'Enter') {
@@ -166,8 +211,8 @@ export function CommandPalette({ onNavigate }: { onNavigate?: (path: string) => 
                 if (cmd) { cmd.run(); setOpen(false) }
               }
             }}
-            placeholder="Type a command…"
-            aria-label="Search commands"
+            placeholder={creatingCollection ? 'Collection name — Enter to create, Esc to cancel' : 'Type a command…'}
+            aria-label={creatingCollection ? 'New collection name' : 'Search commands'}
             className="h-11 flex-1 bg-transparent text-sm outline-none placeholder:text-ink-faint"
           />
           <Kbd keys={['esc']} />

@@ -4,6 +4,7 @@ import type {
   Collection,
   GeneratedOutput,
   OutputType,
+  OutputVersion,
   Thought,
   TimelineEvent,
   ToneId,
@@ -101,6 +102,29 @@ export interface EditSnapshot {
   tone: ToneId
 }
 
+/* ---- Phase 19: output version history ----------------------------------
+   Versioning actions (tone switch, format switch, quick rewrite) archive
+   the pre-change snapshot so nothing is silently lost. Snapshots live on
+   the output itself, so they persist with thoughts automatically. */
+
+const MAX_VERSIONS = 12
+
+let versionSeq = 0
+export const makeVersion = (label: string, snap: EditSnapshot): OutputVersion => ({
+  id: `v${Date.now().toString(36)}-${(versionSeq++).toString(36)}`,
+  at: Date.now(),
+  label,
+  body: snap.body,
+  tone: snap.tone,
+})
+
+/** Archive a snapshot onto an output (newest-first, capped). Pure helper
+ *  used inside set() updaters. */
+const archiveOnto = (o: GeneratedOutput, v: OutputVersion): GeneratedOutput => ({
+  ...o,
+  versions: [v, ...(o.versions ?? [])].slice(0, MAX_VERSIONS),
+})
+
 interface AppState {
   thoughts: Thought[]
   timeline: TimelineEvent[]
@@ -159,6 +183,13 @@ interface AppState {
   undoEdit: (outputId: string) => void
   redoEdit: (outputId: string) => void
 
+  /** Phase 19 — archive the current body as a named version snapshot. */
+  saveVersion: (thoughtId: string, outputId: string, label?: string) => OutputVersion | null
+  /** Restore an archived snapshot (the current body is re-archived first). */
+  restoreVersion: (thoughtId: string, outputId: string, versionId: string) => boolean
+  /** Drop one archived snapshot. Returns whether it existed. */
+  deleteVersion: (thoughtId: string, outputId: string, versionId: string) => boolean
+
   setSearchQuery: (q: string) => void
 
   pushToast: (message: string, tone?: Toast['tone']) => void
@@ -196,6 +227,7 @@ export const useAppStore = create<AppState>()(
       setPalette: (open) => set({ paletteOpen: open }),
       setInboxView: (view) => set({ inboxView: view }),
       dismissOnboarding: () => set({ onboardingSeen: true }),
+      showOnboarding: () => set({ onboardingSeen: false }),
       recordDemoVisit: () => set((s) => ({ demoVisits: s.demoVisits + 1 })),
       setSearchQuery: (q) => set({ searchQuery: q }),
 
@@ -304,10 +336,12 @@ export const useAppStore = create<AppState>()(
       body: tone === 'professional' ? base : retune(base, tone),
       tone,
     }
+    /* Phase 19: keep the pre-switch text as an archived version. */
+    const archived = archiveOnto(merged, makeVersion(`Tone: ${output.tone}`, { body: output.body, tone: output.tone }))
     set((s) => ({
       thoughts: s.thoughts.map((t) =>
         t.id === thoughtId
-          ? { ...t, outputs: t.outputs.map((o) => (o.id === outputId ? merged : o)) }
+          ? { ...t, outputs: t.outputs.map((o) => (o.id === outputId ? archived : o)) }
           : t,
       ),
       timeline: [
@@ -329,10 +363,12 @@ export const useAppStore = create<AppState>()(
     if (!thought || !output) return
     const regenerated = generateOutput(thought.text, { type, tone: output.tone })
     const merged: GeneratedOutput = { ...regenerated, id: outputId, createdAt: output.createdAt }
+    /* Phase 19: the old-format text is archived, never silently dropped. */
+    const archived = archiveOnto(merged, makeVersion(`Format: ${output.type}`, { body: output.body, tone: output.tone }))
     set((s) => ({
       thoughts: s.thoughts.map((t) =>
         t.id === thoughtId
-          ? { ...t, outputs: t.outputs.map((o) => (o.id === outputId ? merged : o)) }
+          ? { ...t, outputs: t.outputs.map((o) => (o.id === outputId ? archived : o)) }
           : t,
       ),
       /* Regenerating replaces the document — its undo journal resets. */
@@ -432,6 +468,80 @@ export const useAppStore = create<AppState>()(
         [outputId]: { past: [...hist.past, current], future: hist.future.slice(1) },
       },
     })
+  },
+
+  /* ---- Phase 19: output version history ---- */
+
+  saveVersion: (thoughtId, outputId, label) => {
+    const thought = get().thoughts.find((t) => t.id === thoughtId)
+    const output = thought?.outputs.find((o) => o.id === outputId)
+    if (!thought || !output) return null
+    const v = makeVersion(label ?? 'Manual save', { body: output.body, tone: output.tone })
+    set((s) => ({
+      thoughts: s.thoughts.map((t) =>
+        t.id === thoughtId
+          ? { ...t, outputs: t.outputs.map((o) => (o.id === outputId ? archiveOnto(o, v) : o)) }
+          : t,
+      ),
+      timeline: [
+        ...s.timeline,
+        { id: uid('ev'), thoughtId, at: Date.now(), kind: 'save' as const, label: `Version saved · ${v.label}` },
+      ],
+    }))
+    get().pushToast('Version saved — restore it any time from History', 'success')
+    return v
+  },
+
+  restoreVersion: (thoughtId, outputId, versionId) => {
+    const thought = get().thoughts.find((t) => t.id === thoughtId)
+    const output = thought?.outputs.find((o) => o.id === outputId)
+    const v = output?.versions?.find((x) => x.id === versionId)
+    if (!thought || !output || !v) return false
+    /* Restoring is itself reversible: the pre-restore body is archived
+       first, then the snapshot's text/tone become current and the used
+       snapshot leaves the list (it can always be re-saved). */
+    const preRestore = makeVersion(`Before restore (${output.tone})`, { body: output.body, tone: output.tone })
+    const restored: GeneratedOutput = {
+      ...output,
+      body: v.body,
+      tone: v.tone,
+      versions: [preRestore, ...(output.versions ?? []).filter((x) => x.id !== versionId)].slice(0, MAX_VERSIONS),
+    }
+    set((s) => ({
+      thoughts: s.thoughts.map((t) =>
+        t.id === thoughtId
+          ? { ...t, outputs: t.outputs.map((o) => (o.id === outputId ? restored : o)) }
+          : t,
+      ),
+      /* The undo journal refers to superseded text — start clean. */
+      editHistory: { ...s.editHistory, [outputId]: { past: [], future: [] } },
+      timeline: [
+        ...s.timeline,
+        { id: uid('ev'), thoughtId, at: Date.now(), kind: 'transform' as const, label: `Restored ${v.label}`, detail: output.title },
+      ],
+    }))
+    get().pushToast(`Restored "${v.label}"`, 'success')
+    return true
+  },
+
+  deleteVersion: (thoughtId, outputId, versionId) => {
+    const thought = get().thoughts.find((t) => t.id === thoughtId)
+    const output = thought?.outputs.find((o) => o.id === outputId)
+    if (!thought || !output || !output.versions?.some((x) => x.id === versionId)) return false
+    set((s) => ({
+      thoughts: s.thoughts.map((t) =>
+        t.id === thoughtId
+          ? {
+              ...t,
+              outputs: t.outputs.map((o) =>
+                o.id === outputId ? { ...o, versions: (o.versions ?? []).filter((x) => x.id !== versionId) } : o,
+              ),
+            }
+          : t,
+      ),
+    }))
+    get().pushToast('Version deleted', 'info')
+    return true
   },
 
   saveToCollection: (thoughtId, outputId, collectionName) => {

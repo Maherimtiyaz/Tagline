@@ -13,6 +13,7 @@ import type { OutputType } from './data/types'
    bundle stays lean — framer-motion + lucide only ship when a route needs
    them. */
 const LandingLazy = lazy(() => import('./features/marketing/LandingPage').then((m) => ({ default: m.LandingPage })))
+const ShareLazy = lazy(() => import('./features/marketing/SharePage').then((m) => ({ default: m.SharePage })))
 const MobileLazy = lazy(() => import('./features/mobile/MobileApp').then((m) => ({ default: m.MobileApp })))
 const DemoLazy = lazy(() => import('./features/demo/DemoPage').then((m) => ({ default: m.DemoPage })))
 const InboxLazy = lazy(() => import('./features/workspace/InboxPage').then((m) => ({ default: m.InboxPage })))
@@ -96,6 +97,7 @@ export default function App() {
       <Suspense fallback={<RouteFallback />}>
         <Routes>
           <Route path="/" element={<LandingLazy />} />
+          <Route path="/share" element={<ShareLazy />} />
           <Route path="/demo" element={<DemoLazy />} />
           <Route path="/templates" element={<TemplatesLazy inApp={false} />} />
           <Route path="/app" element={<InboxScreen />} />
