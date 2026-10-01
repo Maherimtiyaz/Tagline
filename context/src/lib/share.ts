@@ -79,6 +79,48 @@ export function decodeShareHash(hash: string): DecodeResult {
   }
 }
 
+/* ---------- Phase 18 — native share sheet with graceful fallback ---------- */
+
+export type ShareMethod = 'native' | 'clipboard' | 'failed'
+
+/** True when the browser exposes a working native share target.
+ *  Feature-detection only — canShare is intentionally not consulted,
+ *  since long text shares are handled by most sheets or fall back. */
+export function canNativeShare(): boolean {
+  return typeof navigator !== 'undefined' && typeof navigator.share === 'function'
+}
+
+/** Share a document the way the platform intends:
+ *  - devices with a native share sheet (mobile, some desktops) get
+ *    navigator.share() with title / text / link in one gesture;
+ *  - everything else falls back to copying the share link;
+ *  - if both fail (e.g. user dismissed the sheet → AbortError, which we
+ *    treat as "not shared" without surfacing an error), returns 'failed'. */
+export async function shareDocument(
+  payload: SharedPayload & { summary?: string },
+): Promise<ShareMethod> {
+  const link = createShareLink({ text: payload.text, format: payload.format, title: payload.title })
+  if (canNativeShare()) {
+    try {
+      await navigator.share({
+        title: payload.title ?? 'Context output',
+        text: payload.summary ?? payload.text.slice(0, 240),
+        url: link,
+      })
+      return 'native'
+    } catch (err) {
+      /* User dismissed the sheet — browsers report this as AbortError or
+         NotAllowedError depending on engine. Treat both as "cancelled":
+         don't fight them with a clipboard write. */
+      if (err instanceof Error && (err.name === 'AbortError' || err.name === 'NotAllowedError')) {
+        return 'failed'
+      }
+      /* Anything else (unsupported data…) → fall through to clipboard. */
+    }
+  }
+  return (await copyToClipboard(link)) ? 'clipboard' : 'failed'
+}
+
 /** Copy helper with an execCommand fallback for non-secure contexts. */
 export async function copyToClipboard(text: string): Promise<boolean> {
   try {

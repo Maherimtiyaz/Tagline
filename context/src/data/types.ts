@@ -105,6 +105,9 @@ export type TimelineKind =
   | 'save'
   | 'export'
   | 'archive'
+  /* Phase 18/19 link: archived output snapshots render on the
+     global History timeline via this kind. */
+  | 'version'
 
 export interface TimelineEvent {
   id: string
