@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import {
   Archive,
   FileText,
+  FolderPlus,
   LayoutTemplate,
   Plus,
   Search,

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Check, ChevronDown, Copy, Download, Link2, Quote } from 'lucide-react'
+import { Check, ChevronDown, Copy, Download, FolderOpen, Link2, Quote } from 'lucide-react'
 import type { GeneratedOutput, OutputType, ToneId } from '../../data/types'
+import { COLLECTIONS } from '../../data/mock'
 import { OUTPUT_TYPES, TONES } from '../../lib/outputMeta'
 import { downloadExport, formatsFor, serializeExport } from '../../lib/exporters'
 import { useAppStore } from '../../lib/store'
@@ -29,9 +30,11 @@ export function OutputEditor({
   const reformat = useAppStore((s) => s.reformat)
   const editBody = useAppStore((s) => s.editOutputBody)
   const saveToCollection = useAppStore((s) => s.saveToCollection)
+  const userCollections = useAppStore((s) => s.userCollections)
   const pushToast = useAppStore((s) => s.pushToast)
   const [copied, setCopied] = useState(false)
   const [drafting, setDrafting] = useState<string | null>(null)
+  const [saveOpen, setSaveOpen] = useState(false)
 
   const display = drafting ?? output.body
 
@@ -148,9 +151,39 @@ export function OutputEditor({
             {copied ? 'Copied' : 'Copy'}
           </button>
           <ExportMenu output={output} display={display} onDone={(fmt) => pushToast(`Exported ${fmt}`, 'success')} />
-          <button type="button" onClick={() => saveToCollection(thoughtId, output.id, 'Client Work')} className="flex items-center gap-1.5 rounded-md border border-line bg-canvas-deep px-2.5 py-1.5 text-xs text-ink transition-colors hover:border-line-strong">
-            Save
-          </button>
+          {/* Save-to-collection menu (spec §37 / §65 "✓ Saved to collection") */}
+          <div className="relative">
+            <button
+              type="button"
+              aria-haspopup="menu"
+              aria-expanded={saveOpen}
+              onClick={() => setSaveOpen((v) => !v)}
+              onKeyDown={(e) => { if (e.key === 'Escape') setSaveOpen(false) }}
+              className="flex items-center gap-1.5 rounded-md border border-line bg-canvas-deep px-2.5 py-1.5 text-xs text-ink transition-colors hover:border-line-strong"
+            >
+              <FolderOpen size={13} aria-hidden /> Save
+              <ChevronDown size={11} aria-hidden className={cn('transition-transform', saveOpen && 'rotate-180')} />
+            </button>
+            {saveOpen && (
+              <div
+                role="menu"
+                aria-label="Save output to a collection"
+                className="absolute left-0 z-20 mt-1 w-48 overflow-hidden rounded-lg border border-line bg-surface shadow-lg"
+              >
+                {[...COLLECTIONS, ...userCollections].map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => { saveToCollection(thoughtId, output.id, c.id); setSaveOpen(false) }}
+                    className="block w-full px-3 py-1.5 text-left text-xs text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink"
+                  >
+                    {c.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <button type="button" onClick={() => pushToast('Share link copied (demo)', 'success')} className="flex items-center gap-1.5 rounded-md border border-line bg-canvas-deep px-2.5 py-1.5 text-xs text-ink transition-colors hover:border-line-strong">
             <Link2 size={13} aria-hidden /> Share
           </button>
