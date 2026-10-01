@@ -88,3 +88,13 @@ export function timeAgo(ts: number): string {
 export function clockTime(ts: number): string {
   return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
+
+/** Compact day label for timeline grouping (History, spec §34). */
+export function dayLabel(ts: number): string {
+  const d = new Date(ts)
+  const today = new Date()
+  const yst = new Date(today.getTime() - 86_400_000)
+  if (d.toDateString() === today.toDateString()) return 'Today'
+  if (d.toDateString() === yst.toDateString()) return 'Yesterday'
+  return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })
+}

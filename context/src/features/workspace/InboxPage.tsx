@@ -8,6 +8,7 @@ import { useReducedMotion } from '../../hooks/useReducedMotion'
 import { timeAgo } from '../../hooks/useTransformPipeline'
 import { ThoughtCard } from '../../components/ui/ThoughtCard'
 import { EmptyState } from '../../components/ui/EmptyState'
+import { Skeleton } from '../../components/ui/Skeleton'
 import { Badge } from '../../components/ui/Badge'
 import { cn } from '../../lib/cn'
 
@@ -64,6 +65,16 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
   const reduced = useReducedMotion()
   const [query, setQuery] = useState('')
   const searchRef = useRef<HTMLInputElement>(null)
+
+  /* Hydration/loading state (QA §71): the persisted store rehydrates from
+     localStorage a beat after first paint — show skeleton cards instead of
+     a flash of "empty" or unstyled list. */
+  const [booted, setBooted] = useState(() => thoughts.length > 0)
+  useEffect(() => {
+    if (booted) return
+    const t = window.setTimeout(() => setBooted(true), 350)
+    return () => window.clearTimeout(t)
+  }, [booted])
 
   const meta = VIEW_META[view]
   const nonArchived = thoughts.filter((t) => t.status !== 'archived')
@@ -129,7 +140,7 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
       <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-line px-4 py-3 md:px-6">
         <div className="min-w-0 flex-1">
           <h1 className="text-base font-semibold tracking-tight">{meta.title}</h1>
-          <p className="font-mono text-3xs text-ink-faint">{subtitle}</p>
+          <p className="font-mono text-3xs tabular-nums text-ink-subtle">{subtitle}</p>
         </div>
         <label className="relative flex-1 basis-48 md:basis-64">
           <span className="sr-only">Search thoughts and outputs</span>
@@ -139,10 +150,10 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search…  /"
-            className="h-8 w-full rounded-md border border-line bg-canvas-deep pl-8 pr-7 text-sm placeholder:text-ink-faint focus:border-accent focus:outline-none"
+            className="h-8 w-full rounded-md border border-line bg-canvas-deep pl-8 pr-7 text-sm placeholder:text-ink-subtle focus:border-accent focus:outline-none"
           />
           {query && (
-            <button type="button" onClick={() => setQuery('')} aria-label="Clear search" className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-faint hover:text-ink">
+            <button type="button" onClick={() => setQuery('')} aria-label="Clear search" className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-subtle hover:text-ink">
               <X size={12} />
             </button>
           )}
@@ -157,7 +168,14 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 md:px-6">
-        {results ? (
+        {!booted ? (
+          /* ---------- LOADING (store rehydration) ---------- */
+          <div className="space-y-2.5" role="status" aria-label="Loading thoughts">
+            {[76, 92, 68].map((h, i) => (
+              <Skeleton key={i} className="rounded-lg" style={{ height: h }} />
+            ))}
+          </div>
+        ) : results ? (
           /* ---------- SEARCH RESULTS ---------- */
           <div className="space-y-5">
             <p className="font-mono text-2xs text-ink-subtle">
@@ -185,7 +203,7 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
                   <span className="block truncate text-sm font-medium"><Highlight text={output.title} q={query} /></span>
                   <span className="block truncate text-xs text-ink-muted"><Highlight text={output.body.split('\n')[0]} q={query} /></span>
                 </span>
-                <span className="ml-auto shrink-0 font-mono text-3xs text-ink-faint">{timeAgo(output.createdAt)}</span>
+                <span className="ml-auto shrink-0 font-mono text-3xs tabular-nums text-ink-subtle">{timeAgo(output.createdAt)}</span>
               </button>
             ))}
             {results.tpl.map((tp) => (
@@ -200,7 +218,7 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
                   <span className="block truncate text-sm font-medium"><Highlight text={tp.name} q={query} /></span>
                   <span className="block truncate text-xs text-ink-muted"><Highlight text={tp.description} q={query} /></span>
                 </span>
-                <span className="ml-auto shrink-0 font-mono text-3xs text-ink-faint">template</span>
+                <span className="ml-auto shrink-0 font-mono text-3xs text-ink-subtle">template</span>
               </button>
             ))}
             {results.th.length === 0 && results.outs.length === 0 && results.tpl.length === 0 && (
@@ -250,7 +268,7 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
                 </section>
               ),
             )}
-            <p className={cn('flex items-center gap-1.5 pt-1 font-mono text-3xs text-ink-faint')}>
+            <p className={cn('flex items-center gap-1.5 pt-1 font-mono text-3xs text-ink-subtle')}>
               <CornerDownLeft size={10} aria-hidden /> click a thought to open the editor · press N for a new one
             </p>
           </div>

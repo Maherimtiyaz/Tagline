@@ -49,7 +49,7 @@ function MarketingNav() {
   return (
     <header
       className={cn(
-        'sticky top-0 z-nav border-b border-line bg-canvas/85 backdrop-blur-md transition-[height] duration-[var(--duration-normal)]',
+        'sticky top-0 z-nav border-b border-line bg-canvas/85 backdrop-blur-md transition-[height] duration-[var(--duration-fast)]',
         scrolled ? 'h-14' : 'h-16',
       )}
     >

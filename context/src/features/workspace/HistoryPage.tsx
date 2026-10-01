@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { ArrowDown, ArrowRight, Check, Copy, Download, GitBranch, Save } from 'lucide-react'
 import type { TimelineKind } from '../../data/types'
 import { useAppStore } from '../../lib/store'
-import { clockTime } from '../../hooks/useTransformPipeline'
+import { clockTime, dayLabel } from '../../hooks/useTransformPipeline'
 import { SEED_TIMELINE, SEED_THOUGHTS } from '../../data/mock'
 import { cn } from '../../lib/cn'
 
@@ -64,7 +64,7 @@ export function HistoryPage() {
     <div className="mx-auto flex h-full w-full max-w-3xl flex-col">
       <header className="border-b border-line px-4 py-3 md:px-6">
         <h1 className="text-base font-semibold tracking-tight">History</h1>
-        <p className="font-mono text-3xs text-ink-faint">every transformation, in order · demo data</p>
+        <p className="font-mono text-3xs text-ink-subtle">every transformation, in order · demo data</p>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
         {byThought.length === 0 ? (
@@ -81,27 +81,40 @@ export function HistoryPage() {
                   "{g.text.slice(0, 90)}{g.text.length > 90 ? '…' : ''}"
                 </button>
                 <ol className="relative ml-2 space-y-0 border-l border-line pl-5">
-                  {g.events.map((e, i) => (
-                    <li key={e.id} className="relative pb-5 last:pb-0 animate-fade-up" style={{ animationDelay: `${i * 40}ms` }}>
-                      <span
-                        className={cn(
-                          'absolute -left-[26.5px] top-0.5 flex h-4 w-4 items-center justify-center rounded-full border',
-                          e.kind === 'transform' ? 'border-accent-line bg-accent-soft text-accent'
-                            : e.kind === 'copy' || e.kind === 'save' || e.kind === 'export' ? 'border-emerald bg-emerald-soft text-emerald'
-                              : 'border-line bg-surface text-ink-subtle',
-                        )}
-                        aria-hidden
-                      >
-                        {KIND_ICON[e.kind]}
-                      </span>
-                      <time className="font-mono text-3xs text-ink-faint">{clockTime(e.at)}</time>
-                      <p className="text-sm text-ink">{e.label}</p>
-                      {e.detail && <p className="text-xs text-ink-muted">{e.detail}</p>}
-                      {i < g.events.length - 1 && (
-                        <ArrowDown size={10} className="mt-1 text-ink-faint" aria-hidden />
-                      )}
-                    </li>
-                  ))}
+                  {(() => {
+                    /* Day boundaries (spec §34): show a day label whenever
+                       the calendar day changes within this thought's events. */
+                    let prevDay: string | null = null
+                    return g.events.map((e, i) => {
+                      const day = dayLabel(e.at)
+                      const isNewDay = day !== prevDay
+                      prevDay = day
+                      return (
+                        <li key={e.id} className="relative pb-5 last:pb-0 animate-fade-up" style={{ animationDelay: `${i * 40}ms` }}>
+                          {isNewDay && (
+                            <p className="label-mono mb-2 -mt-1 text-ink-subtle">{day}</p>
+                          )}
+                          <span
+                            className={cn(
+                              'absolute -left-[26.5px] top-0.5 flex h-4 w-4 items-center justify-center rounded-full border',
+                              e.kind === 'transform' ? 'border-accent-line bg-accent-soft text-accent'
+                                : e.kind === 'copy' || e.kind === 'save' || e.kind === 'export' ? 'border-emerald bg-emerald-soft text-emerald'
+                                  : 'border-line bg-surface text-ink-subtle',
+                            )}
+                            aria-hidden
+                          >
+                            {KIND_ICON[e.kind]}
+                          </span>
+                          <time className="font-mono text-3xs tabular-nums text-ink-faint">{clockTime(e.at)}</time>
+                          <p className="text-sm text-ink">{e.label}</p>
+                          {e.detail && <p className="text-xs text-ink-muted">{e.detail}</p>}
+                          {i < g.events.length - 1 && (
+                            <ArrowDown size={10} className="mt-1 text-ink-faint" aria-hidden />
+                          )}
+                        </li>
+                      )
+                    })
+                  })()}
                 </ol>
               </section>
             ))}
