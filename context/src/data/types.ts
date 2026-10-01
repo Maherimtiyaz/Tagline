@@ -51,6 +51,17 @@ export interface Understanding {
   actions: string[]
 }
 
+/** One immutable snapshot of an output's body, kept when a versioning
+ *  action (tone / format / quick edit) would otherwise overwrite it.
+ *  Phase 19 — output version history. */
+export interface OutputVersion {
+  id: string
+  at: number
+  label: string
+  body: string
+  tone: ToneId
+}
+
 export interface GeneratedOutput {
   id: string
   type: OutputType
@@ -62,6 +73,8 @@ export interface GeneratedOutput {
   baseBody?: string
   createdAt: number
   tone: ToneId
+  /** Newest-first archived snapshots of this output (max 12). */
+  versions?: OutputVersion[]
 }
 
 export interface Suggestion {

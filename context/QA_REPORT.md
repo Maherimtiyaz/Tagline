@@ -102,3 +102,26 @@ Deterministic store-level walkthrough of the §72 quality-bar journey:
 - Preview sweep: `/`, `/demo`, `/app`, `/app/history`, `/app/collections`, `/app/settings`, `/mobile`, **`/share`** → all 200
 
 **Result: Phase 16 complete.**
+
+---
+
+## Phase 17 — Inbox Bulk Actions *(shipped earlier, commit `593486e`)*
+
+Multi-select + batch archive/restore/delete/save-to-collection with sticky BulkActionBar, keyboard shortcuts, a11y and motion support. Verified at the time (clean build/lint/tests).
+
+---
+
+## Phase 19 — Output Version History
+
+**Feature:** tone switches, format switches and quick rewrites previously overwrote document text irreversibly (only in-session undo existed). Every versioning action now archives an immutable snapshot; users can also save named versions, preview them, restore, or delete.
+
+- **Data (`data/types.ts`):** new `OutputVersion {id, at, label, body, tone}`; `GeneratedOutput.versions?: OutputVersion[]` (newest-first, capped at 12). Versions ride inside thoughts → persist through the existing localStorage pipeline automatically.
+- **Store (`lib/store.ts`):** exported `makeVersion()` + internal `archiveOnto()` helper; `retone` archives `Tone: <old>` before switching, `reformat` archives `Format: <old>`; new actions `saveVersion` (manual, timeline event + toast), `restoreVersion` (reversible — pre-restore body is itself archived as `Before restore (<tone>)`, used snapshot consumed, undo journal reset since it refers to superseded text), `deleteVersion`. All no-op safely on unknown ids.
+- **UI (`components/ui/OutputEditor.tsx`):** new `VersionHistory` popover in the footer — trigger shows live count badge (reads from store so it survives output-object replacement), "Save current" button, empty-state explainer, per-row preview/restore/delete (hover-reveal icons with focus-visible fallback), read-only preview pane with Restore/Back. Esc unwinds preview→popover with focus return; outside-click closes both. Tabular-nums timestamps, token colors only.
+
+### Verification
+- Build: `tsc -b && vite build` ✓ 1.44s; lint 0 errors (5 pre-existing warnings)
+- Store harness (`qa/phase19-versions.test.ts`, tsx): **22/22 pass** — auto-archive on tone/format switch, manual save, reversible restore + snapshot consumption + undo-journal reset, missing-id guards, 12-cap newest-first, unique ids, timeline events, persistence serialization
+- Preview sweep: `/`, `/demo`, `/app/workspace`, `/app/collections`, `/app/history`, `/share`, `/settings` → all 200
+
+**Result: Phase 19 complete.** Extension phases shipped: 11 exports · 12 persisted collections · 13 collection CRUD · 14 wiring/QA · 15 palette actions · 16 share links · 17 bulk actions · 19 version history.
