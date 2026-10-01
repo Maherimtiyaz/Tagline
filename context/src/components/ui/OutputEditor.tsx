@@ -5,6 +5,7 @@ import type { GeneratedOutput, OutputType, ToneId } from '../../data/types'
 import { COLLECTIONS } from '../../data/mock'
 import { OUTPUT_TYPES, TONES } from '../../lib/outputMeta'
 import { downloadExport, formatsFor, serializeExport } from '../../lib/exporters'
+import { copyToClipboard, createShareLink } from '../../lib/share'
 import { useAppStore } from '../../lib/store'
 import { cn } from '../../lib/cn'
 import { SegmentedControl } from '../ui/SegmentedControl'
@@ -33,10 +34,25 @@ export function OutputEditor({
   const userCollections = useAppStore((s) => s.userCollections)
   const pushToast = useAppStore((s) => s.pushToast)
   const [copied, setCopied] = useState(false)
+  const [shareState, setShareState] = useState<'idle' | 'done' | 'fail'>('idle')
   const [drafting, setDrafting] = useState<string | null>(null)
   const [saveOpen, setSaveOpen] = useState(false)
 
   const display = drafting ?? output.body
+
+  /* Phase 16 — real share links: the current (possibly hand-edited)
+     body is encoded into a #share=… fragment so the link renders on
+     any device without a backend. */
+  const onShare = async () => {
+    const link = createShareLink({ text: display, format: 'text', title: output.title })
+    const ok = await copyToClipboard(link)
+    setShareState(ok ? 'done' : 'fail')
+    pushToast(
+      ok ? 'Share link copied — opens anywhere' : 'Could not reach clipboard; copy from the URL bar after opening the link',
+      ok ? 'success' : 'error',
+    )
+    window.setTimeout(() => setShareState('idle'), 1800)
+  }
 
   const onCopy = async () => {
     const full = (output.subject ? `Subject: ${output.subject}\n\n` : '') + display
@@ -184,8 +200,21 @@ export function OutputEditor({
               </div>
             )}
           </div>
-          <button type="button" onClick={() => pushToast('Share link copied (demo)', 'success')} className="flex items-center gap-1.5 rounded-md border border-line bg-canvas-deep px-2.5 py-1.5 text-xs text-ink transition-colors hover:border-line-strong">
-            <Link2 size={13} aria-hidden /> Share
+          <button
+            type="button"
+            onClick={onShare}
+            aria-label="Copy a shareable link to this output"
+            className={cn(
+              'flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+              shareState === 'done'
+                ? 'border-accent-line bg-accent-soft text-accent'
+                : shareState === 'fail'
+                  ? 'border-coral text-coral'
+                  : 'border-line bg-canvas-deep text-ink hover:border-line-strong',
+            )}
+          >
+            {shareState === 'done' ? <Check size={13} aria-hidden /> : <Link2 size={13} aria-hidden />}
+            {shareState === 'done' ? 'Link copied' : shareState === 'fail' ? 'Copy failed' : 'Share'}
           </button>
         </div>
         <div className="flex flex-wrap items-center gap-2">

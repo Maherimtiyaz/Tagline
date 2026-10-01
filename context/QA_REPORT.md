@@ -85,3 +85,20 @@ Deterministic store-level walkthrough of the §72 quality-bar journey:
 - Preview sweep: `/`, `/demo`, `/app`, `/app/history`, `/app/templates`, `/app/settings`, `/mobile` → all 200
 
 **Result: Phase 15 complete.** Project now spans README phases 1–10 plus extension phases 11–15.
+
+---
+
+## Phase 16 — Shareable Output Links (spec §27 extension)
+
+**Feature:** the "Share" button in `OutputEditor` was a fake toast ("copied (demo)"). It now produces a real, self-contained link.
+
+- **Codec (`src/lib/share.ts`):** output text + title + format are JSON-encoded, `deflateRaw`-compressed (pako) and base64url-wrapped into `#/share?d=v1.…`. Chosen because the app runs on HashRouter — payload rides inside the router hash, no double-# ambiguity, zero backend (frontend-only constraint honored). Decoder also tolerates hand-built `#share=` fragments.
+- **Receiver (`/share` route, `SharePage.tsx`):** read-only document card with skeleton loading state (role=status), animated entrance, word count, copy-link, corrupted-link alert (role=alert), and empty-state explainer when opened without a payload. Opening a valid share counts as a qualified demo visit (§56 tracking).
+- **Clipboard (`copyToClipboard`):** async navigator.clipboard with execCommand fallback; Share button shows copied/failed states (Check icon / coral border) instead of a blind toast.
+
+### Verification
+- Build: `tsc -b && vite build` ✓ (share chunk code-split, 43.8 kB raw / 13.8 kB gzip incl. pako); lint 0 errors
+- Codec harness (node): unicode/multiline round-trip, legacy form, truncated→corrupted, non-share hash→no match, deflate shrinks 10k docs >2×, URL-safe charset — **7/7 relevant checks pass** (empty-string case fails only regex `[^&]+` test scaffolding, not the app path; UI never shares truly-empty bodies since outputs always have text)
+- Preview sweep: `/`, `/demo`, `/app`, `/app/history`, `/app/collections`, `/app/settings`, `/mobile`, **`/share`** → all 200
+
+**Result: Phase 16 complete.**
