@@ -107,10 +107,10 @@ Six defects found & fixed: dead `--duration-normal` token; missing inbox loading
 - Selection state fully store-driven; ThoughtCard checkbox + highlight; select-all toggle; Escape shortcut in InboxPage.
 - *(This is the shipped feature set; earlier duplicate claims of "Phase 20" refer to the same work.)*
 
-### Phase 21 — Bulk-Delete Recovery — ❌ NOT SHIPPED
-- Claimed: undo-toast recovery for bulk deletes via a session trash buffer.
-- **Source check (grep-verified):** no `trash` / `lastDeleted` / `undoDelete` symbols exist in `src/lib/store.ts`. The only undo mechanisms are the editor's per-output undo/redo journal (spec §27) and the delete-confirmation step inside BulkActionBar.
-- Status: **not implemented** — open work item.
+### Phase 21 — Destructive-Action Recovery (Undo toasts) — ✅ SHIPPED
+- **Toast system (`ui/Toast.tsx`):** `Toast.action?: {label, run}` — destructive toasts render an inline uppercase "Undo" button (accent token, focus-visible ring). Toast message area is a dismiss button with descriptive aria-label; the action runs *before* dismissal. Actionable toasts linger 6s vs 2.6s for plain ones so the button stays reachable.
+- **Store (`lib/store.ts`):** new `restoreTrashed(trashed, indices)` re-inserts deleted rows at their exact original positions (ascending-index splice; idempotent guard skips ids already present → double-undo can't duplicate). `deleteThought` and `bulkDelete` capture full rows + indices before splicing and attach Undo. `archiveThought` / `bulkArchive` snapshot prior statuses and offer Undo that restores them verbatim (raw↔processed preserved, not blanket "inbox"). Re-archiving an archived row is now a guarded no-op.
+- **Verify:** `qa/phase21-undo.test.ts` — 27/27 pass (exact-position restore, order recovery, output-bearing refusal kept, status round-trips, idempotency, guards, persistence serialization); build clean; lint 0 errors (5 pre-existing warnings unchanged); all 8 routes 200.
 
 ### Phase 22 — Pin to Top — ❌ NOT SHIPPED
 - Claimed: `pinned` flag, pin-first sorting, `togglePin` action.
@@ -138,4 +138,5 @@ Six defects found & fixed: dead `--duration-normal` token; missing inbox loading
 | 1–10 | README build order | ✅ Complete (commit `cf9cc33`) |
 | 11–16 | Exports, collections, onboarding, regression, share links | ✅ Complete & verified |
 | 17–20 | Bulk actions, Web Share, version history, multi-select hardening | ✅ Complete & verified (`417cef2`, `b555f7f`, merged `fe49449`; `3b9d87a`) |
-| 21–22 | Delete recovery, pin-to-top | ❌ Not implemented (source-verified gaps) |
+| 21 | Destructive-action recovery (undo toasts) | ✅ Complete & verified (`qa/phase21-undo.test.ts` 27/27) |
+| 22 | Pin-to-top | ❌ Not implemented (source-verified gap; open work item) |

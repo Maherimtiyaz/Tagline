@@ -91,7 +91,14 @@ export interface Toast {
   id: string
   message: string
   tone?: 'success' | 'info' | 'error'
+  /** Optional inline action (Phase 21 — "Undo" on destructive toasts). */
+  action?: { label: string; run: () => void }
 }
+
+/** How long a plain toast stays on screen. */
+const TOAST_MS = 2600
+/** Undo-actionable toasts linger longer so the button is reachable. */
+const TOAST_ACTION_MS = 6000
 
 /** Which inbox view the list screen renders (spec §18 sidebar). */
 export type InboxView = 'inbox' | 'workspace' | 'drafts'
@@ -194,6 +201,10 @@ interface AppState {
   bulkRestore: (ids: string[]) => number
   /** Bulk-delete; refuses when any selection still has outputs (data safety). */
   bulkDelete: (ids: string[]) => { deleted: number; refused: number }
+  /** Phase 21 — re-insert trashed thoughts at their original positions.
+   *  Ids already present are skipped, so double-undo is harmless.
+   *  Returns how many were actually restored. */
+  restoreTrashed: (trashed: Thought[], indices: number[]) => number
   /** File every selected thought into a collection (by id or name). */
   bulkSaveToCollection: (ids: string[], collectionName: string) => number
 
@@ -206,7 +217,11 @@ interface AppState {
 
   setSearchQuery: (q: string) => void
 
-  pushToast: (message: string, tone?: Toast['tone']) => void
+  pushToast: (
+    message: string,
+    tone?: Toast['tone'],
+    action?: { label: string; run: () => void },
+  ) => void
   dismissToast: (id: string) => void
   resetDemo: () => void
 }
@@ -268,7 +283,26 @@ export const useAppStore = create<AppState>()(
           ],
           selectedIds: [],
         }))
-        get().pushToast(`Archived ${targets.length} thought${targets.length === 1 ? '' : 's'}`, 'info')
+        /* Phase 21: bulk archive gets an Undo that restores prior statuses. */
+        const prev = new Map(targets.map((t) => [t.id, t.status]))
+        get().pushToast(
+          `Archived ${targets.length} thought${targets.length === 1 ? '' : 's'}`,
+          'info',
+          {
+            label: 'Undo',
+            run: () => {
+              set((s) => ({
+                thoughts: s.thoughts.map((t) =>
+                  prev.has(t.id) ? { ...t, status: prev.get(t.id)! } : t,
+                ),
+              }))
+              get().pushToast(
+                `Restored ${prev.size} thought${prev.size === 1 ? '' : 's'}`,
+                'success',
+              )
+            },
+          },
+        )
         return targets.length
       },
 
@@ -292,10 +326,28 @@ export const useAppStore = create<AppState>()(
         const doomed = all.filter((t) => ids.includes(t.id) && t.outputs.length === 0)
         const refused = ids.length - doomed.length
         if (doomed.length > 0) {
+          /* Phase 21: capture full rows + original indices BEFORE the
+             splice so "Undo" can re-insert at the exact positions. */
+          const doomedIds = new Set(doomed.map((t) => t.id))
+          const trashed: Thought[] = []
+          const indices: number[] = []
+          all.forEach((t, i) => {
+            if (doomedIds.has(t.id)) {
+              trashed.push(t)
+              indices.push(i)
+            }
+          })
           set((s) => ({
-            thoughts: s.thoughts.filter((t) => !doomed.some((x) => x.id === t.id)),
+            thoughts: s.thoughts.filter((t) => !doomedIds.has(t.id)),
             selectedIds: [],
           }))
+          get().pushToast(`Deleted ${doomed.length} draft${doomed.length === 1 ? '' : 's'}`, 'info', {
+            label: 'Undo',
+            run: () => {
+              const n = get().restoreTrashed(trashed, indices)
+              if (n > 0) get().pushToast(`Restored ${n} draft${n === 1 ? '' : 's'}`, 'success')
+            },
+          })
         }
         if (refused > 0) {
           /* Data safety: never silently destroy generated outputs. */
@@ -303,10 +355,26 @@ export const useAppStore = create<AppState>()(
             `Deleted ${doomed.length} · kept ${refused} with outputs (archive instead)`,
             'info',
           )
-        } else if (doomed.length > 0) {
-          get().pushToast(`Deleted ${doomed.length} draft${doomed.length === 1 ? '' : 's'}`, 'info')
         }
         return { deleted: doomed.length, refused }
+      },
+
+      restoreTrashed: (trashed, indices) => {
+        if (trashed.length === 0) return 0
+        let restored = 0
+        set((s) => {
+          const next = [...s.thoughts]
+          /* Ascending order: each earlier insertion shifts later
+             targets right by exactly the number already inserted —
+             which equals their own index offset, so positions hold. */
+          trashed.forEach((t, k) => {
+            if (next.some((x) => x.id === t.id)) return /* idempotent guard */
+            next.splice(Math.min(indices[k] ?? next.length, next.length), 0, t)
+            restored += 1
+          })
+          return { thoughts: next }
+        })
+        return restored
       },
 
       bulkSaveToCollection: (ids, collectionName) => {
@@ -355,6 +423,10 @@ export const useAppStore = create<AppState>()(
     })),
 
   archiveThought: (id) => {
+    /* Phase 21: single archive gets an Undo restoring the prior status. */
+    const target = get().thoughts.find((t) => t.id === id)
+    if (!target || target.status === 'archived') return
+    const prevStatus = target.status
     set((s) => ({
       thoughts: s.thoughts.map((t) => (t.id === id ? { ...t, status: 'archived' as const } : t)),
       timeline: [
@@ -362,7 +434,15 @@ export const useAppStore = create<AppState>()(
         { id: uid('ev'), thoughtId: id, at: Date.now(), kind: 'archive' as const, label: 'Archived' },
       ],
     }))
-    get().pushToast('Archived', 'info')
+    get().pushToast('Archived', 'info', {
+      label: 'Undo',
+      run: () => {
+        set((s) => ({
+          thoughts: s.thoughts.map((t) => (t.id === id ? { ...t, status: prevStatus } : t)),
+        }))
+        get().pushToast('Restored to inbox', 'success')
+      },
+    })
   },
 
   unarchiveThought: (id) => {
@@ -375,8 +455,17 @@ export const useAppStore = create<AppState>()(
   },
 
   deleteThought: (id) => {
+    /* Phase 21: capture the row + index so the toast can offer Undo. */
+    const idx = get().thoughts.findIndex((t) => t.id === id)
+    if (idx < 0) return
+    const removed = get().thoughts[idx]
     set((s) => ({ thoughts: s.thoughts.filter((t) => t.id !== id) }))
-    get().pushToast('Draft deleted', 'info')
+    get().pushToast('Draft deleted', 'info', {
+      label: 'Undo',
+      run: () => {
+        if (get().restoreTrashed([removed], [idx]) > 0) get().pushToast('Draft restored', 'success')
+      },
+    })
   },
 
   understand: (id) =>
@@ -746,10 +835,11 @@ export const useAppStore = create<AppState>()(
     get().pushToast(label ? `Moved to ${label}` : 'Removed from collection', 'info')
   },
 
-  pushToast: (message, tone = 'success') => {
+  pushToast: (message, tone = 'success', action) => {
     const id = uid('toast')
-    set((s) => ({ toasts: [...s.toasts, { id, message, tone }] }))
-    setTimeout(() => get().dismissToast(id), 2600)
+    set((s) => ({ toasts: [...s.toasts, { id, message, tone, action }] }))
+    /* Undo-actionable toasts linger longer so the button is reachable. */
+    setTimeout(() => get().dismissToast(id), action ? TOAST_ACTION_MS : TOAST_MS)
   },
 
   dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
