@@ -132,8 +132,12 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
     navigate(`/app/thought/${id}`)
   }
 
-  const today = scoped.filter((t) => Date.now() - t.createdAt < 24 * 3600_000)
-  const earlier = scoped.filter((t) => Date.now() - t.createdAt >= 24 * 3600_000)
+  /* Phase 22: pinned thoughts float above everything in every view. */
+  const isPinned = (t: { pinned?: boolean }) => !!t.pinned
+  const pinnedList = scoped.filter(isPinned)
+  const rest = scoped.filter((t) => !isPinned(t))
+  const today = rest.filter((t) => Date.now() - t.createdAt < 24 * 3600_000)
+  const earlier = rest.filter((t) => Date.now() - t.createdAt >= 24 * 3600_000)
 
   /* Visible ids for bulk actions — "Select all" only ever touches what
      the user can see in this view, never hidden/stale selections. */
@@ -281,7 +285,7 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
         ) : (
           /* ---------- GROUPED LIST ---------- */
           <div className="space-y-7">
-            {[{ label: 'Today', list: today }, { label: 'Earlier', list: earlier }].map(({ label, list }) =>
+            {[{ label: 'Pinned', list: pinnedList }, { label: 'Today', list: today }, { label: 'Earlier', list: earlier }].map(({ label, list }) =>
               list.length === 0 ? null : (
                 <section key={label} aria-label={label}>
                   <p className="label-mono mb-2">{label}</p>
@@ -298,7 +302,7 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
                         >
                           <ThoughtCard
                             id={t.id} text={t.text} source={t.source} createdAt={t.createdAt}
-                            status={t.status} outputCount={t.outputs.length}
+                            status={t.status} outputCount={t.outputs.length} pinned={t.pinned}
                             onOpen={() => navigate(`/app/thought/${t.id}`)}
                             onTransform={() => { transform(t.id, 'email'); navigate(`/app/thought/${t.id}`) }}
                             onDelete={view === 'drafts' ? () => deleteThought(t.id) : undefined}
