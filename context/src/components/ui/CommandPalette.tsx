@@ -1,14 +1,16 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import {
   Archive,
   FileText,
   FolderPlus,
+  Hash,
   Layers,
   LayoutTemplate,
   Plus,
   Search,
   Settings,
   Sparkles,
+  Star,
 } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { useAppStore } from '../../lib/store'
@@ -36,8 +38,10 @@ export function CommandPalette({ onNavigate }: { onNavigate?: (path: string) => 
   const addThought = useAppStore((s) => s.addThought)
   const select = useAppStore((s) => s.select)
   const addCollection = useAppStore((s) => s.addCollection)
+  const toggleStar = useAppStore((s) => s.toggleStar)
   const toggleTheme = useThemeStore((s) => s.toggleTheme)
   const pushToast = useAppStore((s) => s.pushToast)
+  const thoughts = useAppStore((s) => s.thoughts)
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
   /** When true, the palette is in "create collection" input mode (Phase 13). */
@@ -155,9 +159,55 @@ export function CommandPalette({ onNavigate }: { onNavigate?: (path: string) => 
     },
   ]
 
-  const filtered = commands.filter((c) =>
-    (c.label + c.group).toLowerCase().includes(query.toLowerCase()),
-  )
+  /* Phase 24: tag commands — every distinct tag across active thoughts,
+     with usage counts. Selecting one opens the inbox pre-filtered via the
+     ?tag= query param (read by InboxPage). Counts mirror the chip row so
+     both surfaces always agree. */
+  const tagCommands = useMemo<Command[]>(() => {
+    const m = new Map<string, number>()
+    for (const t of thoughts)
+      if (t.status !== 'archived')
+        for (const tag of t.tags ?? []) m.set(tag, (m.get(tag) ?? 0) + 1)
+    return [...m.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, 12)
+      .map(([tag, count]) => ({
+        id: `tag-${tag.toLowerCase()}`,
+        label: `Filter by tag: ${tag}`,
+        hint: `${count} thought${count === 1 ? '' : 's'}`,
+        icon: <Hash size={15} />,
+        group: 'Tags',
+        run: () => onNavigate?.(`/app?tag=${encodeURIComponent(tag)}`),
+      }))
+  }, [thoughts, onNavigate])
+
+  /* Phase 25: star commands — quick-toggle a thought's star from the
+     palette. Starred rows first (they're what users most want to unstar),
+     then recent non-starred; capped at 8 so the list stays scannable. */
+  const starCommands = useMemo<Command[]>(() => {
+    const active = thoughts.filter((t) => t.status !== 'archived' && t.text.trim())
+    const ranked = [...active.filter((t) => t.starred), ...active.filter((t) => !t.starred)].slice(0, 8)
+    return ranked.map((t) => ({
+      id: `star-${t.id}`,
+      label: `${t.starred ? 'Unstar' : 'Star'}: ${t.text.trim().slice(0, 40)}${t.text.trim().length > 40 ? '…' : ''}`,
+      hint: t.starred ? 'remove from starred group' : 'float to top of inbox',
+      icon: <Star size={15} fill={t.starred ? 'currentColor' : 'none'} />,
+      group: 'Star',
+      run: () => {
+        toggleStar(t.id)
+        pushToast(t.starred ? 'Star removed' : 'Thought starred', 'success')
+        setOpen(false)
+      },
+    }))
+  }, [thoughts, toggleStar, pushToast, setOpen])
+
+  const filtered = [
+    ...commands.filter((c) =>
+      (c.label + c.group).toLowerCase().includes(query.toLowerCase()),
+    ),
+    ...tagCommands.filter((c) => c.label.toLowerCase().includes(query.toLowerCase())),
+    ...starCommands.filter((c) => (c.label + c.group).toLowerCase().includes(query.toLowerCase())),
+  ]
 
   useEffect(() => setActive(0), [query])
 

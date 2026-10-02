@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { CheckSquare, CornerDownLeft, LayoutTemplate, Plus, Search, Square, X } from 'lucide-react'
 import { useAppStore, type InboxView } from '../../lib/store'
@@ -12,6 +12,7 @@ import { EmptyState } from '../../components/ui/EmptyState'
 import { Skeleton } from '../../components/ui/Skeleton'
 import { Badge } from '../../components/ui/Badge'
 import { cn } from '../../lib/cn'
+import { priorityGroups } from '../../lib/sort'
 
 /* ============================================================
    Inbox — where raw thoughts live. One list screen drives three
@@ -86,8 +87,25 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
   const meta = VIEW_META[view]
   const nonArchived = thoughts.filter((t) => t.status !== 'archived')
   /* Phase 23: tag filter chips — every distinct tag across active thoughts,
-     with counts. Selection is view-local (not persisted). */
-  const [activeTag, setActiveTag] = useState<string | null>(null)
+     with counts. Selection is view-local (not persisted).
+     Phase 24: initial selection can come from ?tag= (command palette deep
+     link); chip row and clear button stay in sync because they read/write
+     the same state. */
+  const [searchParams] = useSearchParams()
+  const [activeTag, setActiveTag] = useState<string | null>(() => searchParams.get('tag'))
+  /* Phase 26: ?signal=starred|pinned deep links from the sidebar — show only
+     that bucket; any other navigation (or clearing) restores normal view. */
+  const [signal, setSignal] = useState<'starred' | 'pinned' | null>(() => {
+    const s = searchParams.get('signal')
+    return s === 'starred' || s === 'pinned' ? s : null
+  })
+  useEffect(() => {
+    const t = searchParams.get('tag')
+    if (t) setActiveTag(t)
+    else setActiveTag(null) // sidebar tag toggle-off navigates to plain /app/inbox
+    const s = searchParams.get('signal')
+    setSignal(s === 'starred' || s === 'pinned' ? s : null)
+  }, [searchParams])
   const tagCounts = useMemo(() => {
     const m = new Map<string, number>()
     for (const t of nonArchived)
@@ -108,7 +126,10 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
   const results = useMemo(() => {
     if (!query.trim()) return null
     const q = query.toLowerCase()
-    const th = nonArchived.filter((t) => t.text.toLowerCase().includes(q))
+    /* Phase 23: search also matches user tags (e.g. "#launch" → "launch"). */
+    const th = nonArchived.filter(
+      (t) => t.text.toLowerCase().includes(q) || (t.tags ?? []).some((tag) => tag.toLowerCase().includes(q)),
+    )
     const outs = nonArchived.flatMap((t) =>
       t.outputs.filter((o) => (o.title + o.body).toLowerCase().includes(q)).map((o) => ({ thought: t, output: o })),
     )
@@ -146,12 +167,11 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
     navigate(`/app/thought/${id}`)
   }
 
-  /* Phase 22: pinned thoughts float above everything in every view. */
-  const isPinned = (t: { pinned?: boolean }) => !!t.pinned
-  const pinnedList = scoped.filter(isPinned)
-  const rest = scoped.filter((t) => !isPinned(t))
-  const today = rest.filter((t) => Date.now() - t.createdAt < 24 * 3600_000)
-  const earlier = rest.filter((t) => Date.now() - t.createdAt >= 24 * 3600_000)
+  /* Phase 22: pinned thoughts float above everything in every view.
+     Phase 25: starred outrank pinned — Starred / Pinned / Today / Earlier.
+     Phase 28: grouping extracted to lib/sort.ts so the collection detail
+     page orders rows identically. */
+  const groups = useMemo(() => priorityGroups(scoped, signal), [scoped, signal])
 
   /* Visible ids for bulk actions — "Select all" only ever touches what
      the user can see in this view, never hidden/stale selections. */
@@ -340,7 +360,19 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
         ) : (
           /* ---------- GROUPED LIST ---------- */
           <div className="space-y-7">
-            {[{ label: 'Pinned', list: pinnedList }, { label: 'Today', list: today }, { label: 'Earlier', list: earlier }].map(({ label, list }) =>
+            {signal && (
+              <div className="-mt-2 flex items-center gap-2 rounded-md border border-accent-line bg-accent-soft px-3 py-1.5 text-sm text-accent-ink" role="status">
+                <span>Showing {signal === 'starred' ? 'starred' : 'pinned'} thoughts only.</span>
+                <button
+                  type="button"
+                  onClick={() => navigate('/app/inbox')}
+                  className="ml-auto inline-flex items-center gap-1 font-mono text-3xs underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-line"
+                >
+                  <X size={10} aria-hidden /> show all
+                </button>
+              </div>
+            )}
+            {groups.map(({ label, list }) =>
               list.length === 0 ? null : (
                 <section key={label} aria-label={label}>
                   <p className="label-mono mb-2">{label}</p>
@@ -357,7 +389,7 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
                         >
                           <ThoughtCard
                             id={t.id} text={t.text} source={t.source} createdAt={t.createdAt}
-                            status={t.status} outputCount={t.outputs.length} pinned={t.pinned}
+                            status={t.status} outputCount={t.outputs.length} pinned={t.pinned} starred={t.starred} tags={t.tags}
                             onOpen={() => navigate(`/app/thought/${t.id}`)}
                             onTransform={() => { transform(t.id, 'email'); navigate(`/app/thought/${t.id}`) }}
                             onDelete={view === 'drafts' ? () => deleteThought(t.id) : undefined}

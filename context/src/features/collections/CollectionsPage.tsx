@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState, useEffect } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowRight, Check, ChevronDown, Pencil, Plus, Trash2 } from 'lucide-react'
+import { ArrowRight, Check, ChevronDown, Pencil, Plus, Search, Star, Trash2, X } from 'lucide-react'
 import type { Collection, GeneratedOutput, Thought } from '../../data/types'
 import { COLLECTIONS } from '../../data/mock'
 import { useAppStore } from '../../lib/store'
@@ -9,6 +9,7 @@ import { useReducedMotion } from '../../hooks/useReducedMotion'
 import { clockTime } from '../../hooks/useTransformPipeline'
 import { Badge } from '../../components/ui/Badge'
 import { cn } from '../../lib/cn'
+import { priorityGroups, isStarred, isPinned } from '../../lib/sort'
 
 /* ============================================================
    Collections (spec §37) — organise outputs into named sets.
@@ -231,6 +232,57 @@ export function CollectionsPage() {
   }, [collectionId, active, navigate])
   const lists = active ? [active] : allCollections
 
+  /* ---- Phase 28: detail-view filters --------------------------------- *
+     Search box + tag chips narrow the output list; signal chips deep-link
+     back to the inbox's starred/pinned thought views (?signal=).        */
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tagFilter = searchParams.get('tag')
+  const setTagFilter = (next: string | null) => {
+    const p = new URLSearchParams(searchParams)
+    if (next) p.set('tag', next)
+    else p.delete('tag')
+    setSearchParams(p, { replace: true })
+  }
+  const [dq, setDq] = useState('')
+  const detailQuery = dq.trim().toLowerCase()
+
+  /* Thoughts filed into the collection currently in view — used for the
+     header counts and the tag registry below. */
+  const memberThoughts = useMemo(
+    () => (active ? thoughts.filter((t) => t.collectionId === active.id) : []),
+    [thoughts, active],
+  )
+  const starredCount = memberThoughts.filter(isStarred).length
+  const pinnedCount = memberThoughts.filter((t) => !isStarred(t) && isPinned(t)).length
+
+  /* Union of tags across the collection's thoughts, most-used first. */
+  const collectionTags = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const t of memberThoughts)
+      for (const tag of t.tags ?? []) counts.set(tag, (counts.get(tag) ?? 0) + 1)
+    return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+  }, [memberThoughts])
+
+  /* Grouped outputs of the collection in view (detail mode only). */
+  const groupedOutputs = useMemo(() => {
+    if (!active) return []
+    const outs = entries.filter((e) => e.collectionId === active.id)
+    const flat = priorityGroups(memberThoughts).flatMap((g) => g.list)
+    const rank = new Map(flat.map((t, i) => [t.id, i]))
+    const match = (e: Entry) => {
+      if (tagFilter && !(e.thought.tags ?? []).includes(tagFilter)) return false
+      if (!detailQuery) return true
+      return (
+        e.output.title.toLowerCase().includes(detailQuery) ||
+        e.output.body.toLowerCase().includes(detailQuery) ||
+        e.thought.text.toLowerCase().includes(detailQuery)
+      )
+    }
+    return outs
+      .filter(match)
+      .sort((a, b) => (rank.get(a.thought.id) ?? 1e9) - (rank.get(b.thought.id) ?? 1e9))
+  }, [active, entries, memberThoughts, tagFilter, detailQuery])
+
   const createCollection = () => {
     const trimmed = name.trim()
     if (!trimmed) return
@@ -251,6 +303,30 @@ export function CollectionsPage() {
           <h1 className="truncate text-base font-semibold tracking-tight">{active ? active.name : 'Collections'}</h1>
           <p className="font-mono text-3xs text-ink-faint">{active ? active.description : 'organised outputs · saved locally'}</p>
         </div>
+        {active && (starredCount > 0 || pinnedCount > 0) && (
+          <div className="flex items-center gap-1.5" role="group" aria-label="Signals in this collection">
+            {starredCount > 0 && (
+              <button
+                type="button"
+                onClick={() => navigate('/app/inbox?signal=starred')}
+                className="inline-flex h-7 items-center gap-1 rounded-full border border-line px-2.5 font-mono text-3xs text-ink-subtle transition-colors hover:border-accent-line hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+                title={`${starredCount} starred thought${starredCount === 1 ? '' : 's'} — view all starred in inbox`}
+              >
+                <Star size={10} aria-hidden /> {starredCount} starred
+              </button>
+            )}
+            {pinnedCount > 0 && (
+              <button
+                type="button"
+                onClick={() => navigate('/app/inbox?signal=pinned')}
+                className="inline-flex h-7 items-center rounded-full border border-line px-2.5 font-mono text-3xs text-ink-subtle transition-colors hover:border-accent-line hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+                title={`${pinnedCount} pinned thought${pinnedCount === 1 ? '' : 's'} — view all pinned in inbox`}
+              >
+                {pinnedCount} pinned
+              </button>
+            )}
+          </div>
+        )}
         {!active && (
           <button
             type="button"
@@ -264,6 +340,50 @@ export function CollectionsPage() {
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
+        {/* Phase 28: detail-mode toolbar — search + tag chips */}
+        {active && (
+          <div className="mb-4 space-y-2.5">
+            <label className="sr-only" htmlFor="collection-search">Search outputs in this collection</label>
+            <div className="flex items-center gap-2 rounded-lg border border-line bg-canvas-deep px-3 focus-within:border-accent">
+              <Search size={13} className="shrink-0 text-ink-faint" aria-hidden />
+              <input
+                id="collection-search"
+                value={dq}
+                onChange={(e) => setDq(e.target.value)}
+                placeholder="Search outputs…"
+                className="h-9 flex-1 bg-transparent text-sm outline-none placeholder:text-ink-faint"
+              />
+              {dq && (
+                <button type="button" onClick={() => setDq('')} aria-label="Clear search" className="rounded p-1 text-ink-faint hover:text-ink">
+                  <X size={12} aria-hidden />
+                </button>
+              )}
+            </div>
+            {collectionTags.length > 0 && (
+              <div className="flex shrink-0 flex-wrap items-center gap-1.5" role="group" aria-label="Filter by tag">
+                {collectionTags.map(([tag, n]) => {
+                  const on = tagFilter === tag
+                  return (
+                    <button
+                      key={tag}
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() => setTagFilter(on ? null : tag)}
+                      className={cn(
+                        'inline-flex h-6 items-center gap-1 rounded-full border px-2 font-mono text-3xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40',
+                        on
+                          ? 'border-accent-line bg-accent-soft text-accent-ink'
+                          : 'border-line text-ink-subtle hover:border-line-strong hover:text-ink',
+                      )}
+                    >
+                      #{tag} <span className="tabular-nums opacity-70">{n}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
         {/* create row */}
         <AnimatePresence initial={false}>
           {creating && !active && (
@@ -301,21 +421,31 @@ export function CollectionsPage() {
                 <div className="mb-1 flex items-center gap-2">
                   <span className={cn('h-2 w-2 shrink-0 rounded-full', DOT[c.color] ?? DOT.neutral)} aria-hidden />
                   <h2 className="min-w-0 truncate text-sm font-semibold">
-                    {active ? 'Outputs' : (
+                    {active ? (
+                      <>Outputs<span className="ml-1.5 font-mono text-3xs font-normal text-ink-faint">{groupedOutputs.length}{(detailQuery || tagFilter) && ` of ${outs.length}`}</span></>
+                    ) : (
                       <button type="button" onClick={() => navigate(`/app/collections/${c.id}`)} className="rounded transition-colors hover:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
                         {c.name}
                       </button>
                     )}
                   </h2>
                   {!active && <CollectionActions collection={c} />}
-                  <span className="ml-auto font-mono text-3xs text-ink-faint">{outs.length}</span>
+                  {!active && <span className="ml-auto font-mono text-3xs text-ink-faint">{outs.length}</span>}
                 </div>
                 {!active && <p className="mb-3 text-xs text-ink-muted">{c.description}</p>}
-                {outs.length === 0 ? (
-                  <p className="pt-2 text-xs text-ink-faint">Nothing here yet — save an output and it will appear.</p>
+                {(active ? groupedOutputs : outs).length === 0 ? (
+                  active ? (
+                    <p role="status" className="pt-2 text-xs text-ink-faint">
+                      {detailQuery || tagFilter
+                        ? 'No outputs match this filter — clear the search or tag chip to see everything.'
+                        : 'Nothing here yet — save an output and it will appear.'}
+                    </p>
+                  ) : (
+                    <p className="pt-2 text-xs text-ink-faint">Nothing here yet — save an output and it will appear.</p>
+                  )
                 ) : (
                   <ul className="mt-3 space-y-2">
-                    {outs.map(({ output: o, thought: t }) => (
+                    {(active ? groupedOutputs : outs).map(({ output: o, thought: t }) => (
                       <li key={o.id}>
                         <div className="flex items-center gap-2 rounded-lg border border-line bg-canvas-deep pl-3 pr-1.5 py-2 transition-colors hover:border-line-strong">
                           <button
@@ -324,6 +454,7 @@ export function CollectionsPage() {
                             className="flex min-w-0 flex-1 items-center gap-2 text-left"
                           >
                             <Badge tone={o.type === 'email' ? 'accent' : 'outline'}>{o.type}</Badge>
+                            {active && t.starred && <Star size={11} className="shrink-0 fill-current text-accent" aria-label="Starred" />}
                             <span className="min-w-0 flex-1 truncate text-sm">{o.title}</span>
                             <ArrowRight size={12} className="shrink-0 text-ink-faint" aria-hidden />
                           </button>

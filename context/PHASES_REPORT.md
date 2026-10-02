@@ -140,3 +140,46 @@ Six defects found & fixed: dead `--duration-normal` token; missing inbox loading
 | 17–20 | Bulk actions, Web Share, version history, multi-select hardening | ✅ Complete & verified (`417cef2`, `b555f7f`, merged `fe49449`; `3b9d87a`) |
 | 21 | Destructive-action recovery (undo toasts) | ✅ Complete & verified (`qa/phase21-undo.test.ts` 27/27) |
 | 22 | Pin-to-top | ❌ Not implemented (source-verified gap; open work item) |
+
+### Phase 24 — Tag Discoverability in Command Palette (extension) ✅ SHIPPED
+
+**Goal:** Surface tags as first-class citizens in the global command palette so users can jump directly from ⌘K to a tag-filtered inbox view, complementing Phase 23's chip row.
+
+**What shipped:**
+- **`CommandPalette.tsx`**: New memoized `tagCommands` section ("Tags" group, Hash icon) derived from live store thoughts — distinct tags across non-archived rows, sorted by usage count desc then name asc, capped at 12, hint shows "N thought(s)". Selecting navigates to `/app?tag=<encoded>` deep link. Standard list filtering matches tag commands by label substring (typing "launch" surfaces "Filter by tag: Launch").
+- **`InboxPage.tsx`**: Reads `?tag=` via `useSearchParams` — initializes the Phase 23 `activeTag` state from the param and syncs on change, so palette selection lands pre-filtered with the matching chip highlighted and the clear (X) button available. No store state added; URL is the handoff, chips remain the single source of truth.
+- **Seed data** (already shipped in Phase 23 commit): all six mock thoughts carry curated tags so the palette Tags section populates on first load.
+
+*Correction:* an earlier draft of this entry described a `setActiveTagFilter` store action and `/app/inbox` route — neither exists; the shipped design uses the `?tag=` query-param handoff above.
+
+**Verification:**
+- ✅ `qa/phase24-palette-tags.test.ts`: 16/16 pass (label/id/group format, pluralization, URL encoding round-trip, count-desc/alphabetical-tie sorting, archive decrements + unarchive restores counts, 12-cap, substring matching)
+- ✅ Build: `tsc -b && vite build` clean (✓ 1.30s); lint 0 errors (5 pre-existing warnings)
+- ✅ Preview sweep: all routes return 200 including `/app?tag=Launch` and `/share`
+- ✅ Regression: P18 17/17 · P19 22/22 · P21 27/27 · P22 18/18 · P23 21/21
+
+**Files touched:** `src/components/ui/CommandPalette.tsx`, `src/features/workspace/InboxPage.tsx`, `qa/phase24-palette-tags.test.ts`, `PHASES_REPORT.md`
+
+### Phase 25 — Star & Priority Sort (extension) ✅ SHIPPED
+- New `starred?: boolean` flag on Thought; independent of `pinned` so the two never fight.
+- Store: `toggleStar(id)` mirrors `togglePin` (silent, reversible, false on unknown ids).
+- Inbox grouping upgraded to four disjoint buckets: **Starred → Pinned (not starred) → Today → Earlier**; each bucket excludes members of those above it, order preserved inside buckets.
+- `ThoughtCard`: hover-revealed star toggle (left of pin) with aria-pressed + focus-visible ring; persistent filled-Star chip in meta row; persisted through localStorage like pins.
+- Command palette: new "Star" group — quick Star/Unstar any active thought by name (starred ranked first, cap 8, toast feedback, palette closes).
+- ✅ `qa/phase25-star.test.ts`: 24/24 pass (flag round-trip, unknown-id guard, star/pin independence, bucket disjointness/completeness, serialization, palette ranking+label mirror)
+- ✅ Regression: P18 17/17 · P19 22/22 · P21 27/27 · P22 18/18 · P23 21/21 · P24 16/16
+- ✅ Build clean (✓ 1.38s); lint 0 errors; all 7 routes return 200
+
+**Files touched:** `src/data/types.ts`, `src/lib/store.ts`, `src/components/ui/ThoughtCard.tsx`, `src/components/ui/CommandPalette.tsx`, `src/features/workspace/InboxPage.tsx`, `qa/phase25-star.test.ts`, `PHASES_REPORT.md`
+
+
+### Phase 26 — Sidebar Signals & Tag Counts (extension) ✅ SHIPPED
+- AppShell sidebar now surfaces **starred/pinned count chips** (only when >0), deep-linking to `/app/inbox?signal=starred|pinned`.
+- New **Tags** section in the sidebar: top 8 tags by usage across active (non-archived) thoughts, with tabular-nums counts; click toggles the inbox tag filter (`?tag=`), aria-pressed state reflects active filter.
+- InboxPage consumes `?signal=`: shows a single-bucket view with an accessible "Showing starred/pinned thoughts only" status banner + "show all" clear button; plain navigation resets filters (tag sync effect now clears on absent param too).
+- Aggregation mirrors Phase 23/24 case-insensitive semantics; archived rows excluded from all three counters.
+- ✅ `qa/phase26-sidebar.test.ts`: 19/19 pass (seeded baselines, star/pin independence, archive exclusion, add/remove live registry updates, normalization idempotency, persistence round-trip, resetDemo zeroing)
+- ✅ Full regression green: P18 17/17 · P19 22/22 · P21 27/27 · P22 18/18 · P23 21/21 · P24 16/16 · P25 24/24
+- ✅ Build clean (✓ 4.03s); lint 0 errors (5 pre-existing warnings); all 8 routes return 200
+
+**Files touched:** `src/components/layout/AppShell.tsx`, `src/features/workspace/InboxPage.tsx`, `qa/phase26-sidebar.test.ts`, `PHASES_REPORT.md`
