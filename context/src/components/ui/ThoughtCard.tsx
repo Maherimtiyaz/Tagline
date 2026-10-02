@@ -1,5 +1,5 @@
 import { useMemo, type ReactNode } from 'react'
-import { Check, Mic, Image as ImageIcon, Type, FileDown, Pin, PinOff } from 'lucide-react'
+import { Check, Mic, Image as ImageIcon, Type, FileDown, Pin, PinOff, Star } from 'lucide-react'
 import type { SourceType } from '../../data/types'
 import { timeAgo } from '../../hooks/useTransformPipeline'
 import { useAppStore } from '../../lib/store'
@@ -28,6 +28,7 @@ export function ThoughtCard({
   status,
   outputCount,
   pinned,
+  starred,
   tags,
   onOpen,
   onTransform,
@@ -44,6 +45,8 @@ export function ThoughtCard({
   pinned?: boolean
   /** Phase 23 — user tags rendered as quiet chips on the meta row. */
   tags?: string[]
+  /** Phase 25 — starred thoughts sort above pinned ones. */
+  starred?: boolean
   onOpen: () => void
   onTransform: () => void
   /** When provided (Drafts view), replaces Archive with Delete. */
@@ -53,6 +56,7 @@ export function ThoughtCard({
 }) {
   const archive = useAppStore((s) => s.archiveThought)
   const togglePin = useAppStore((s) => s.togglePin)
+  const toggleStar = useAppStore((s) => s.toggleStar)
   const preview = useMemo(() => (text.length > 150 ? text.slice(0, 150) + '…' : text), [text])
   const suggestion = useMemo(() => (text.trim() ? analyzeThought(text).suggestions[0] : null), [text])
 
@@ -94,6 +98,12 @@ export function ThoughtCard({
           {text.trim() ? `"${preview}"` : <span className="italic text-ink-faint">Empty draft — open it and start typing.</span>}
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          {starred && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-accent-line bg-accent-soft px-2 py-0.5 font-mono text-3xs text-accent-ink" aria-label="Starred thought">
+              <Star size={9} fill="currentColor" aria-hidden />
+              Starred
+            </span>
+          )}
           {pinned && (
             <span className="inline-flex items-center gap-1 rounded-full border border-accent-line bg-accent-soft px-2 py-0.5 font-mono text-3xs text-accent-ink" aria-label="Pinned thought">
               <Pin size={9} aria-hidden />
@@ -124,6 +134,22 @@ export function ThoughtCard({
 
       {/* hover-revealed actions */}
       <div className="absolute right-3 top-3 flex gap-1 opacity-0 transition-opacity duration-[var(--duration-micro)] group-hover:opacity-100 group-focus-within:opacity-100">
+        {/* Phase 25: star toggle — sits left of pin, mirrors pin's quiet style. */}
+        <button
+          type="button"
+          onClick={() => toggleStar(id)}
+          aria-label={starred ? 'Unstar thought' : 'Star thought'}
+          aria-pressed={!!starred}
+          className={cn(
+            'flex h-[26px] w-[26px] items-center justify-center rounded-md border transition-colors',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-line',
+            starred
+              ? 'border-accent-line bg-accent-soft text-accent'
+              : 'border-line bg-surface text-ink-muted hover:border-line-strong hover:text-ink',
+          )}
+        >
+          <Star size={12} fill={starred ? 'currentColor' : 'none'} aria-hidden />
+        </button>
         {/* Phase 22: pin toggle — always available, sits left of Transform. */}
         <button
           type="button"

@@ -97,6 +97,9 @@ export interface Thought {
   /** Phase 22b — user tags for filtering. Seeded from extracted topics
    *  on first transform; fully editable (add / rename / remove). */
   tags?: string[]
+  /** Phase 25 — starred thoughts float to the very top of inbox views,
+   *  above pinned rows. Independent flag so pin/star never fight. */
+  starred?: boolean
 }
 
 /* ---------- History / timeline ---------- */

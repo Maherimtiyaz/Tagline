@@ -157,10 +157,14 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
     navigate(`/app/thought/${id}`)
   }
 
-  /* Phase 22: pinned thoughts float above everything in every view. */
+  /* Phase 22: pinned thoughts float above everything in every view.
+     Phase 25: starred outrank pinned — Starred / Pinned / Today / Earlier,
+     with each bucket excluding members of the ones above it. */
   const isPinned = (t: { pinned?: boolean }) => !!t.pinned
-  const pinnedList = scoped.filter(isPinned)
-  const rest = scoped.filter((t) => !isPinned(t))
+  const isStarred = (t: { starred?: boolean }) => !!t.starred
+  const starredList = scoped.filter(isStarred)
+  const pinnedList = scoped.filter((t) => !isStarred(t) && isPinned(t))
+  const rest = scoped.filter((t) => !isStarred(t) && !isPinned(t))
   const today = rest.filter((t) => Date.now() - t.createdAt < 24 * 3600_000)
   const earlier = rest.filter((t) => Date.now() - t.createdAt >= 24 * 3600_000)
 
@@ -351,7 +355,7 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
         ) : (
           /* ---------- GROUPED LIST ---------- */
           <div className="space-y-7">
-            {[{ label: 'Pinned', list: pinnedList }, { label: 'Today', list: today }, { label: 'Earlier', list: earlier }].map(({ label, list }) =>
+            {[{ label: 'Starred', list: starredList }, { label: 'Pinned', list: pinnedList }, { label: 'Today', list: today }, { label: 'Earlier', list: earlier }].map(({ label, list }) =>
               list.length === 0 ? null : (
                 <section key={label} aria-label={label}>
                   <p className="label-mono mb-2">{label}</p>
@@ -368,7 +372,7 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
                         >
                           <ThoughtCard
                             id={t.id} text={t.text} source={t.source} createdAt={t.createdAt}
-                            status={t.status} outputCount={t.outputs.length} pinned={t.pinned} tags={t.tags}
+                            status={t.status} outputCount={t.outputs.length} pinned={t.pinned} starred={t.starred} tags={t.tags}
                             onOpen={() => navigate(`/app/thought/${t.id}`)}
                             onTransform={() => { transform(t.id, 'email'); navigate(`/app/thought/${t.id}`) }}
                             onDelete={view === 'drafts' ? () => deleteThought(t.id) : undefined}

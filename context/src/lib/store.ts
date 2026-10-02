@@ -173,6 +173,8 @@ interface AppState {
   unarchiveThought: (id: string) => void
   /** Phase 22 — pin/unpin; pinned thoughts float to the top of inbox views. */
   togglePin: (id: string) => boolean
+  /** Phase 25 — star/unstar; starred rows sort above pinned rows. */
+  toggleStar: (id: string) => boolean
 
   /* ---- Phase 23: tags — user-editable labels for inbox filtering ---- */
   /** Add a normalized tag to one thought. False when empty/dupe/unknown. */
@@ -477,6 +479,15 @@ export const useAppStore = create<AppState>()(
     if (!target) return false
     const next = !target.pinned
     set((s) => ({ thoughts: s.thoughts.map((t) => (t.id === id ? { ...t, pinned: next } : t)) }))
+    return next
+  },
+
+  toggleStar: (id) => {
+    /* Phase 25 — mirror of togglePin: silent, reversible, false on unknown ids. */
+    const target = get().thoughts.find((t) => t.id === id)
+    if (!target) return false
+    const next = !target.starred
+    set((s) => ({ thoughts: s.thoughts.map((t) => (t.id === id ? { ...t, starred: next } : t)) }))
     return next
   },
 

@@ -159,3 +159,15 @@ Six defects found & fixed: dead `--duration-normal` token; missing inbox loading
 - ✅ Regression: P18 17/17 · P19 22/22 · P21 27/27 · P22 18/18 · P23 21/21
 
 **Files touched:** `src/components/ui/CommandPalette.tsx`, `src/features/workspace/InboxPage.tsx`, `qa/phase24-palette-tags.test.ts`, `PHASES_REPORT.md`
+
+### Phase 25 — Star & Priority Sort (extension) ✅ SHIPPED
+- New `starred?: boolean` flag on Thought; independent of `pinned` so the two never fight.
+- Store: `toggleStar(id)` mirrors `togglePin` (silent, reversible, false on unknown ids).
+- Inbox grouping upgraded to four disjoint buckets: **Starred → Pinned (not starred) → Today → Earlier**; each bucket excludes members of those above it, order preserved inside buckets.
+- `ThoughtCard`: hover-revealed star toggle (left of pin) with aria-pressed + focus-visible ring; persistent filled-Star chip in meta row; persisted through localStorage like pins.
+- Command palette: new "Star" group — quick Star/Unstar any active thought by name (starred ranked first, cap 8, toast feedback, palette closes).
+- ✅ `qa/phase25-star.test.ts`: 24/24 pass (flag round-trip, unknown-id guard, star/pin independence, bucket disjointness/completeness, serialization, palette ranking+label mirror)
+- ✅ Regression: P18 17/17 · P19 22/22 · P21 27/27 · P22 18/18 · P23 21/21 · P24 16/16
+- ✅ Build clean (✓ 1.38s); lint 0 errors; all 7 routes return 200
+
+**Files touched:** `src/data/types.ts`, `src/lib/store.ts`, `src/components/ui/ThoughtCard.tsx`, `src/components/ui/CommandPalette.tsx`, `src/features/workspace/InboxPage.tsx`, `qa/phase25-star.test.ts`, `PHASES_REPORT.md`
