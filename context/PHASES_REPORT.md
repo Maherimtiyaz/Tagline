@@ -1,0 +1,141 @@
+# Context — Detailed Phase Work Report
+
+**Stack:** React 19 · TypeScript · Vite · Tailwind v4 · Framer Motion · Zustand · Lucide icons · frontend-only (no backend, mock AI)
+**App root:** `/context` · **Store:** `src/lib/store.ts` (~89 state/action members) · **QA log:** `QA_REPORT.md` · **Test harnesses:** `qa/phase18-share.test.ts`, `qa/phase19-versions.test.ts`
+
+---
+
+## PART A — README Build Order (Phases 1–10)
+
+### Phase 1 — Design System & App Shell
+- `styles/tokens.css`: full token set — ink/surface/accent/coral/amber color scales, spacing rhythm, timing + easing tokens (`--duration-fast/base/slow`), focus-visible ring.
+- `components/layout/AppShell.tsx`: sidebar nav, top bar, mobile drawer; global keyboard-shortcut layer.
+- ~20 UI primitives in `components/ui/`: Button, IconButton, Input, Textarea, Select, Badge, Dialog, EmptyState, Kbd, Skeleton, SegmentedControl, Toast, ThoughtCard, ContextChip, CommandPalette, OutputEditor…
+- **Verify:** tsc + vite build clean from this phase onward.
+
+### Phase 2 — Landing Page & Hero Transformation
+- `features/landing/LandingPage.tsx` + `sections.tsx` (784 lines): how-it-works, messy→clear showcase, scroll-driven storytelling.
+- `HeroDemo.tsx`: 5 preset messy inputs, staged transform animation honoring reduced motion.
+
+### Phase 3 — Core Thought Workspace
+- `InboxPage` with `/` search shortcut and match highlighting; `ThoughtEditor`; `CollectionsPage`.
+- Deterministic seed data in `data/mock.ts`.
+
+### Phase 4 — Transformation Engine & Output Editor
+- `lib/mockAI.ts`: deterministic `transformThought` (word extraction → concept clustering → structured output).
+- `hooks/useTransformPipeline.ts`: 5-stage pipeline with per-stage progress; collapses to instant under `prefers-reduced-motion`.
+- `TransformExperience` + `OutputWorkspace` (tone/format quick actions).
+
+### Phase 5 — Voice & Screenshot Simulation
+- `VoiceCapture.tsx`: hold-to-speak state machine (idle → listening → transcribing → done) with waveform.
+- `ScreenshotDrop.tsx`: drag-and-drop image analysis simulation.
+
+### Phase 6 — History & Templates
+- `HistoryPage.tsx`: visual timeline of activity.
+- `TemplatesPage.tsx`: template gallery with input-requirement flow.
+
+### Phase 7 — Mobile Experience
+- `MobileApp.tsx` (336 lines): bottom nav, capture-first home, bottom-sheet transform flow.
+
+### Phase 8 — Motion Polish
+- `animations/Transformation.tsx`: signature word→concept fly-out animation; shared-element transitions; timing tokens everywhere.
+
+### Phase 9 — Accessibility
+- ARIA/roles across 32 files; shortcuts: ⌘K palette (arrow-nav), ⌘Enter run, N new, / search, Esc close.
+- `useReducedMotion` consumed in 11 components; global focus-visible styles.
+
+### Phase 10 — Final Visual QA (commit `cf9cc33`)
+Six defects found & fixed: dead `--duration-normal` token; missing inbox loading state (Skeleton cards, `role=status`); tabular-nums on mono timestamps; contrast promotion ink-faint→ink-subtle; spec §34 day-grouping in History via `dayLabel()`; `prefers-color-scheme` theme-color metas.
+**Result: all 10 README phases complete.**
+
+---
+
+## PART B — Extension Phases (beyond README order)
+
+### Phase 11 — Export & Integration (spec §27) — commit `2ae95a3`
+- New `lib/exporters.ts`: Plain Text, Markdown, .eml (RFC-822-ish), Slack Block Kit JSON; type-gated by output format.
+- Accessible export menu in `OutputEditor.tsx`; real downloads wired into `MobileApp.tsx` bottom sheet.
+- Fixed a rules-of-hooks violation in `ThoughtEditor.tsx`.
+
+### Phase 12 — Persistent User Collections — commit `c2ca499`
+- Store: `userCollections` slice + `addCollection` / `moveToCollection`; `saveToCollection` resolves by id-or-name.
+- CollectionsPage: custom accessible FilePicker for attaching sources.
+- AppShell sidebar shows live collection list.
+
+### Phase 13 — Collections CRUD — commit `61b3b8d`
+- Rename/delete actions with slug regeneration and seed-immutability guard; bounce-back motion.
+- Inline "New collection" affordance in sidebar + command palette entry.
+- *(Shipped with 2 known build breaks — completed in Phase 14.)*
+
+### Phase 14 — Wire-up & Red-Build Rescue — commit `75bf624`
+- Implemented missing `showOnboarding()` action; completed palette collection-creation input mode (Enter commits, Esc unwinds, contextual placeholder, reset-on-open; added missing `Layers` import).
+- Wired `demoVisits` + `showOnboarding` selectors used by Settings (§56 conversion tracking row); removed unused imports.
+- **Verify:** tsc+vite clean (was 10 errors), lint 0, 7 routes 200, store logic tests pass.
+
+### Phase 14.5 — Onboarding & Conversion Tracking — commit `645d544`
+- First-run modal (`components/layout/Onboarding.tsx`), dismiss/replay cycle, demo-visit counter persisted through localStorage.
+
+### Phase 15 — Global Actions & E2E Regression — commit `27e72aa`
+- Command palette: replay welcome tour, reset demo data.
+- 16-check end-to-end regression harness (search, shortcuts, transforms, exports, collection resolve-by-name, rename, onboarding cycle, …). All pass.
+
+### Phase 16 — Shareable Output Links — commit `d997863`
+- `lib/share.ts`: JSON → `deflateRaw` (pako) → base64url → payload inside router hash (`#/share?d=v1.…`) — works from any deploy path, no server.
+- `/share` lazy route + `SharePage.tsx`: read-only card; skeleton / success / corrupted-link alert / empty states; records qualified demo visit.
+- OutputEditor share button: encode current draft, 3 visual states, clipboard API + execCommand fallback.
+- **Verify:** codec harness (unicode round-trip, truncation→corrupted, >2× compression, URL-safe charset); 8 routes 200.
+
+### Phase 17 — Inbox Bulk Actions — commits `417cef2` / `fe49449`
+- Store selection slice + `bulkArchive` / `bulkRestore` / `bulkDelete` / `bulkSaveToCollection` (id-keyed, index-safe).
+- `BulkActionBar.tsx`: floating bar, select-all, delete confirmation step, Escape clears selection, keyboard + aria support.
+- Checkbox affordance + selected styling in `ThoughtCard`; wired in `InboxPage`.
+
+### Phase 18 — Web Share API + Version Entries in Timeline — commit `b555f7f`
+- `isWebShareSupported()` / native `navigator.share({title, text, url})` with graceful clipboard fallback; wired in OutputEditor and MobileApp share sheet.
+- Fixed TS errors from prior attempt (unused binding, bad shortcut key def).
+- Version-history snapshots folded into the global History timeline feed.
+- **Verify:** `qa/phase18-share.test.ts` passes; build/lint/routes green.
+
+### Phase 19 — Output Version History — commit `3b9d87a`
+- Types: `OutputVersion {id, at, label, body, tone}`; `GeneratedOutput.versions?` newest-first, capped at 12; rides inside thoughts → persists via existing localStorage pipeline.
+- Store: exported `makeVersion()`, `archiveOnto()`; `retone` auto-archives `Tone: <old>`; `reformat` auto-archives `Format: <old>`; `saveVersion` (named snapshot + timeline event + toast), `restoreVersion` (itself reversible via `Before restore (<tone>)` re-archive), `deleteVersion`; unknown-id guards.
+- UI: version popover in editor footer — live count badge, save-current, empty state, preview/restore/delete rows, Esc unwind with focus return, outside-click close, tabular-nums.
+- **Verify:** `qa/phase19-versions.test.ts` 22/22; build/lint clean; 7 routes 200.
+
+### Phase 20 — Multi-select & Bulk Actions (hardened re-implementation) — commit `fe49449`
+- Rebuilt/merged bulk-action flow atop Phase 17: BulkActionBar with archive / restore / delete-with-confirm / save-to-collection.
+- Selection state fully store-driven; ThoughtCard checkbox + highlight; select-all toggle; Escape shortcut in InboxPage.
+- *(This is the shipped feature set; earlier duplicate claims of "Phase 20" refer to the same work.)*
+
+### Phase 21 — Bulk-Delete Recovery — ❌ NOT SHIPPED
+- Claimed: undo-toast recovery for bulk deletes via a session trash buffer.
+- **Source check (grep-verified):** no `trash` / `lastDeleted` / `undoDelete` symbols exist in `src/lib/store.ts`. The only undo mechanisms are the editor's per-output undo/redo journal (spec §27) and the delete-confirmation step inside BulkActionBar.
+- Status: **not implemented** — open work item.
+
+### Phase 22 — Pin to Top — ❌ NOT SHIPPED
+- Claimed: `pinned` flag, pin-first sorting, `togglePin` action.
+- **Source check (grep-verified):** no `pinned` / `togglePin` symbols exist in `store.ts` or `data/types.ts`; no Phase 22 commit exists in git history.
+- Status: **not implemented** — open work item.
+
+---
+
+## Cross-cutting Verification Protocol (applied every phase)
+1. `tsc -b && vite build` must be clean (code-split chunks checked for new routes).
+2. `npm run lint` — 0 errors (pre-existing warnings tracked, never introduced).
+3. Node/tsx store+lib harnesses for pure logic (Phases 15/16/18/19/20).
+4. Preview-server sweep: every route returns 200 (currently 8: landing, demo, workspace ×4, mobile view, /share).
+5. Accessibility review each phase: roles, focus management, Esc unwind, reduced-motion, contrast tokens only.
+6. QA_REPORT.md amended; git commit with phase-tagged message; working tree left clean.
+
+## Honest Repo-State Notes
+- Several intermediate assistant turns claimed commits/hashes that never entered git history (e.g., "Phase 17 `593486e`", "Phase 18 `a37e204`", "Phase 21 `6a53f0c`", "Phase 22 `a3c1d8f`"). The authoritative record is `git log`: HEAD is `8982595` (merge) atop `fe49449` (Phase 20).
+- Phases 11–20 features were each confirmed present in actual source files before being marked complete here.
+- Phases 21–22 are **claimed but absent from source** (grep-verified) and remain open work items.
+
+## Status Summary
+| Range | Scope | State |
+|-------|-------|-------|
+| 1–10 | README build order | ✅ Complete (commit `cf9cc33`) |
+| 11–16 | Exports, collections, onboarding, regression, share links | ✅ Complete & verified |
+| 17–20 | Bulk actions, Web Share, version history, multi-select hardening | ✅ Complete & verified (`417cef2`, `b555f7f`, merged `fe49449`; `3b9d87a`) |
+| 21–22 | Delete recovery, pin-to-top | ❌ Not implemented (source-verified gaps) |
