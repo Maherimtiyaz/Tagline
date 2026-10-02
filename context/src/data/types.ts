@@ -92,6 +92,8 @@ export interface Thought {
   understanding?: Understanding
   outputs: GeneratedOutput[]
   collectionId?: string
+  /** Phase 22 — pinned thoughts sort to the top of every inbox view. */
+  pinned?: boolean
 }
 
 /* ---------- History / timeline ---------- */

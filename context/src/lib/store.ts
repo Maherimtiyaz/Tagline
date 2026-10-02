@@ -165,6 +165,8 @@ interface AppState {
   deleteThought: (id: string) => void
   archiveThought: (id: string) => void
   unarchiveThought: (id: string) => void
+  /** Phase 22 — pin/unpin; pinned thoughts float to the top of inbox views. */
+  togglePin: (id: string) => boolean
 
   /** Run understanding for a thought (stage-2 data only; UI animates stages). */
   understand: (id: string) => void
@@ -452,6 +454,16 @@ export const useAppStore = create<AppState>()(
       ),
     }))
     get().pushToast('Restored to inbox', 'success')
+  },
+
+  togglePin: (id) => {
+    /* Phase 22 — flip the flag; false for unknown ids. No toast: the card
+       itself animates, and pinning is reversible/repeatable UI noise-free. */
+    const target = get().thoughts.find((t) => t.id === id)
+    if (!target) return false
+    const next = !target.pinned
+    set((s) => ({ thoughts: s.thoughts.map((t) => (t.id === id ? { ...t, pinned: next } : t)) }))
+    return next
   },
 
   deleteThought: (id) => {

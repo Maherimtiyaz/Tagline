@@ -1,5 +1,5 @@
-import { useMemo } from 'react'
-import { Check, Mic, Image as ImageIcon, Type, FileDown } from 'lucide-react'
+import { useMemo, type ReactNode } from 'react'
+import { Check, Mic, Image as ImageIcon, Type, FileDown, Pin, PinOff } from 'lucide-react'
 import type { SourceType } from '../../data/types'
 import { timeAgo } from '../../hooks/useTransformPipeline'
 import { useAppStore } from '../../lib/store'
@@ -13,7 +13,7 @@ import { Badge } from './Badge'
    borders screaming for attention; emphasis is a hairline.
    ============================================================ */
 
-export const SOURCE_META: Record<SourceType, { label: string; icon: React.ReactNode }> = {
+export const SOURCE_META: Record<SourceType, { label: string; icon: ReactNode }> = {
   voice: { label: 'Voice', icon: <Mic size={12} aria-hidden /> },
   text: { label: 'Text', icon: <Type size={12} aria-hidden /> },
   screenshot: { label: 'Screenshot', icon: <ImageIcon size={12} aria-hidden /> },
@@ -27,6 +27,7 @@ export function ThoughtCard({
   createdAt,
   status,
   outputCount,
+  pinned,
   onOpen,
   onTransform,
   onDelete,
@@ -38,6 +39,8 @@ export function ThoughtCard({
   createdAt: number
   status: string
   outputCount: number
+  /** Phase 22 — pinned thoughts float to the top of inbox views. */
+  pinned?: boolean
   onOpen: () => void
   onTransform: () => void
   /** When provided (Drafts view), replaces Archive with Delete. */
@@ -46,6 +49,7 @@ export function ThoughtCard({
   selection?: { checked: boolean; onToggle: () => void }
 }) {
   const archive = useAppStore((s) => s.archiveThought)
+  const togglePin = useAppStore((s) => s.togglePin)
   const preview = useMemo(() => (text.length > 150 ? text.slice(0, 150) + '…' : text), [text])
   const suggestion = useMemo(() => (text.trim() ? analyzeThought(text).suggestions[0] : null), [text])
 
@@ -87,6 +91,12 @@ export function ThoughtCard({
           {text.trim() ? `"${preview}"` : <span className="italic text-ink-faint">Empty draft — open it and start typing.</span>}
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          {pinned && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-accent-line bg-accent-soft px-2 py-0.5 font-mono text-3xs text-accent-ink" aria-label="Pinned thought">
+              <Pin size={9} aria-hidden />
+              Pinned
+            </span>
+          )}
           <span className="font-mono text-3xs tabular-nums text-ink-subtle">{timeAgo(createdAt)}</span>
           <Badge tone="outline" className="gap-1">
             {SOURCE_META[source].icon}
@@ -105,6 +115,22 @@ export function ThoughtCard({
 
       {/* hover-revealed actions */}
       <div className="absolute right-3 top-3 flex gap-1 opacity-0 transition-opacity duration-[var(--duration-micro)] group-hover:opacity-100 group-focus-within:opacity-100">
+        {/* Phase 22: pin toggle — always available, sits left of Transform. */}
+        <button
+          type="button"
+          onClick={() => togglePin(id)}
+          aria-label={pinned ? 'Unpin thought' : 'Pin thought to top'}
+          aria-pressed={!!pinned}
+          className={cn(
+            'flex h-[26px] w-[26px] items-center justify-center rounded-md border transition-colors',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-line',
+            pinned
+              ? 'border-accent-line bg-accent-soft text-accent'
+              : 'border-line bg-surface text-ink-muted hover:border-line-strong hover:text-ink',
+          )}
+        >
+          {pinned ? <PinOff size={12} aria-hidden /> : <Pin size={12} aria-hidden />}
+        </button>
         {text.trim() && (
           <button
             type="button"

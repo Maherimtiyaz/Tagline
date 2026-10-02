@@ -285,7 +285,7 @@ export function retune(body: string, tone: ToneId): string {
   switch (tone) {
     case 'concise': {
       const lines = body.split('\n').filter((l) => l.trim() !== '')
-      const paras = lines.filter((l) => !/^[·☐\d\-]|^[A-Z][a-z ]+:$/.test(l))
+      const paras = lines.filter((l) => !/^[·☐0-9]|^[A-Z][a-z ]+:$/.test(l))
       const trimmed = paras.map((p) => p.replace(/, [^,]*just[^.]*\./g, '.').replace(/\s+/g, ' '))
       const kept = trimmed.slice(0, Math.max(2, Math.ceil(trimmed.length * 0.6)))
       const rest = lines.filter((l) => !kept.includes(l))
