@@ -12,6 +12,7 @@ import { EmptyState } from '../../components/ui/EmptyState'
 import { Skeleton } from '../../components/ui/Skeleton'
 import { Badge } from '../../components/ui/Badge'
 import { cn } from '../../lib/cn'
+import { priorityGroups } from '../../lib/sort'
 
 /* ============================================================
    Inbox — where raw thoughts live. One list screen drives three
@@ -167,15 +168,10 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
   }
 
   /* Phase 22: pinned thoughts float above everything in every view.
-     Phase 25: starred outrank pinned — Starred / Pinned / Today / Earlier,
-     with each bucket excluding members of the ones above it. */
-  const isPinned = (t: { pinned?: boolean }) => !!t.pinned
-  const isStarred = (t: { starred?: boolean }) => !!t.starred
-  const starredList = scoped.filter(isStarred)
-  const pinnedList = scoped.filter((t) => !isStarred(t) && isPinned(t))
-  const rest = scoped.filter((t) => !isStarred(t) && !isPinned(t))
-  const today = rest.filter((t) => Date.now() - t.createdAt < 24 * 3600_000)
-  const earlier = rest.filter((t) => Date.now() - t.createdAt >= 24 * 3600_000)
+     Phase 25: starred outrank pinned — Starred / Pinned / Today / Earlier.
+     Phase 28: grouping extracted to lib/sort.ts so the collection detail
+     page orders rows identically. */
+  const groups = useMemo(() => priorityGroups(scoped, signal), [scoped, signal])
 
   /* Visible ids for bulk actions — "Select all" only ever touches what
      the user can see in this view, never hidden/stale selections. */
@@ -376,13 +372,7 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
                 </button>
               </div>
             )}
-            {(
-              signal === 'starred'
-                ? [{ label: 'Starred', list: starredList }]
-                : signal === 'pinned'
-                  ? [{ label: 'Pinned', list: pinnedList }]
-                  : [{ label: 'Starred', list: starredList }, { label: 'Pinned', list: pinnedList }, { label: 'Today', list: today }, { label: 'Earlier', list: earlier }]
-            ).map(({ label, list }) =>
+            {groups.map(({ label, list }) =>
               list.length === 0 ? null : (
                 <section key={label} aria-label={label}>
                   <p className="label-mono mb-2">{label}</p>
