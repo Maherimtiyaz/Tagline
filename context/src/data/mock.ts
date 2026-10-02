@@ -20,6 +20,7 @@ export const SEED_THOUGHTS: Thought[] = [
     status: 'raw',
     outputs: [],
     collectionId: 'cl-client',
+    tags: ['Client comms', 'Deadlines'],
   },
   {
     id: 'th-proposal',
@@ -29,6 +30,7 @@ export const SEED_THOUGHTS: Thought[] = [
     status: 'raw',
     outputs: [],
     collectionId: 'cl-client',
+    tags: ['Client comms', 'Follow-up'],
   },
   {
     id: 'th-launch',
@@ -40,6 +42,7 @@ export const SEED_THOUGHTS: Thought[] = [
       generateOutput('launch my portfolio next month', { type: 'plan' }),
     ],
     collectionId: 'cl-startup',
+    tags: ['Portfolio', 'Launch'],
   },
   {
     id: 'th-fixes',
@@ -49,6 +52,7 @@ export const SEED_THOUGHTS: Thought[] = [
     status: 'raw',
     outputs: [],
     collectionId: 'cl-startup',
+    tags: ['QA', 'Launch blockers'],
   },
   {
     id: 'th-meeting',
@@ -60,6 +64,7 @@ export const SEED_THOUGHTS: Thought[] = [
       generateOutput('meeting notes standup kickoff', { type: 'summary' }),
     ],
     collectionId: 'cl-client',
+    tags: ['Scope', 'UAT'],
   },
   {
     id: 'th-db',
@@ -69,6 +74,7 @@ export const SEED_THOUGHTS: Thought[] = [
     status: 'raw',
     outputs: [],
     collectionId: 'cl-ideas',
+    tags: ['Architecture', 'Billing'],
   },
 ]
 

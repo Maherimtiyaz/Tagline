@@ -108,7 +108,10 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
   const results = useMemo(() => {
     if (!query.trim()) return null
     const q = query.toLowerCase()
-    const th = nonArchived.filter((t) => t.text.toLowerCase().includes(q))
+    /* Phase 23: search also matches user tags (e.g. "#launch" → "launch"). */
+    const th = nonArchived.filter(
+      (t) => t.text.toLowerCase().includes(q) || (t.tags ?? []).some((tag) => tag.toLowerCase().includes(q)),
+    )
     const outs = nonArchived.flatMap((t) =>
       t.outputs.filter((o) => (o.title + o.body).toLowerCase().includes(q)).map((o) => ({ thought: t, output: o })),
     )
@@ -357,7 +360,7 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
                         >
                           <ThoughtCard
                             id={t.id} text={t.text} source={t.source} createdAt={t.createdAt}
-                            status={t.status} outputCount={t.outputs.length} pinned={t.pinned}
+                            status={t.status} outputCount={t.outputs.length} pinned={t.pinned} tags={t.tags}
                             onOpen={() => navigate(`/app/thought/${t.id}`)}
                             onTransform={() => { transform(t.id, 'email'); navigate(`/app/thought/${t.id}`) }}
                             onDelete={view === 'drafts' ? () => deleteThought(t.id) : undefined}

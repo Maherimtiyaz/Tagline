@@ -125,3 +125,17 @@ Multi-select + batch archive/restore/delete/save-to-collection with sticky BulkA
 - Preview sweep: `/`, `/demo`, `/app/workspace`, `/app/collections`, `/app/history`, `/share`, `/settings` → all 200
 
 **Result: Phase 19 complete.** Extension phases shipped: 11 exports · 12 persisted collections · 13 collection CRUD · 14 wiring/QA · 15 palette actions · 16 share links · 17 bulk actions · 19 version history.
+
+## Phase 23 — Tags & Tag Filtering (completed)
+
+Commit `20325c5` shipped the core (types, normalizeTag/addTag/removeTag/renameTag store actions, transform auto-seeding from topics, TagEditor in ThoughtEditor, tag chips + filter row in Inbox). This follow-up closed the remaining wiring gaps:
+
+- **InboxPage** now passes `tags={t.tags}` to `ThoughtCard` (chips were rendering nowhere before) and global search (§33) matches tag names in addition to thought text.
+- **Seed data** (`data/mock.ts`): all six demo thoughts carry curated tags (Client comms ×2, Launch blockers, UAT, etc.) so the filter row is populated on first load.
+- **Harness** `qa/phase23-tags.test.ts`: 21 checks — normalization (# strip, whitespace collapse, 24-char cap), add/remove/rename case-insensitivity, collision-safe merge, last-tag-clears-field, unknown-id guards, transform seed-once semantics (manual edits never overwritten), persistence round-trip.
+
+### Verification
+- Build ✓ 1.24s; lint 0 errors (5 pre-existing warnings); regressions green: P18 17/17 · P19 22/22 · P21 27/27 · P22 18/18 · P23 21/21
+- Preview sweep: all 8 routes → 200
+
+**Result: Phase 23 complete.** Two initial test failures were harness bugs (seeded "Launch" tag on th-launch legitimately joins renameTag scope; corrected expected count 2→3), not product defects.
