@@ -1,8 +1,9 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import {
   Archive,
   FileText,
   FolderPlus,
+  Hash,
   Layers,
   LayoutTemplate,
   Plus,
@@ -38,6 +39,7 @@ export function CommandPalette({ onNavigate }: { onNavigate?: (path: string) => 
   const addCollection = useAppStore((s) => s.addCollection)
   const toggleTheme = useThemeStore((s) => s.toggleTheme)
   const pushToast = useAppStore((s) => s.pushToast)
+  const thoughts = useAppStore((s) => s.thoughts)
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
   /** When true, the palette is in "create collection" input mode (Phase 13). */
@@ -155,9 +157,34 @@ export function CommandPalette({ onNavigate }: { onNavigate?: (path: string) => 
     },
   ]
 
-  const filtered = commands.filter((c) =>
-    (c.label + c.group).toLowerCase().includes(query.toLowerCase()),
-  )
+  /* Phase 24: tag commands — every distinct tag across active thoughts,
+     with usage counts. Selecting one opens the inbox pre-filtered via the
+     ?tag= query param (read by InboxPage). Counts mirror the chip row so
+     both surfaces always agree. */
+  const tagCommands = useMemo<Command[]>(() => {
+    const m = new Map<string, number>()
+    for (const t of thoughts)
+      if (t.status !== 'archived')
+        for (const tag of t.tags ?? []) m.set(tag, (m.get(tag) ?? 0) + 1)
+    return [...m.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, 12)
+      .map(([tag, count]) => ({
+        id: `tag-${tag.toLowerCase()}`,
+        label: `Filter by tag: ${tag}`,
+        hint: `${count} thought${count === 1 ? '' : 's'}`,
+        icon: <Hash size={15} />,
+        group: 'Tags',
+        run: () => onNavigate?.(`/app?tag=${encodeURIComponent(tag)}`),
+      }))
+  }, [thoughts, onNavigate])
+
+  const filtered = [
+    ...commands.filter((c) =>
+      (c.label + c.group).toLowerCase().includes(query.toLowerCase()),
+    ),
+    ...tagCommands.filter((c) => c.label.toLowerCase().includes(query.toLowerCase())),
+  ]
 
   useEffect(() => setActive(0), [query])
 

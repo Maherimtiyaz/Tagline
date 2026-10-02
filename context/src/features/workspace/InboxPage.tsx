@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { CheckSquare, CornerDownLeft, LayoutTemplate, Plus, Search, Square, X } from 'lucide-react'
 import { useAppStore, type InboxView } from '../../lib/store'
@@ -86,8 +86,16 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
   const meta = VIEW_META[view]
   const nonArchived = thoughts.filter((t) => t.status !== 'archived')
   /* Phase 23: tag filter chips — every distinct tag across active thoughts,
-     with counts. Selection is view-local (not persisted). */
-  const [activeTag, setActiveTag] = useState<string | null>(null)
+     with counts. Selection is view-local (not persisted).
+     Phase 24: initial selection can come from ?tag= (command palette deep
+     link); chip row and clear button stay in sync because they read/write
+     the same state. */
+  const [searchParams] = useSearchParams()
+  const [activeTag, setActiveTag] = useState<string | null>(() => searchParams.get('tag'))
+  useEffect(() => {
+    const t = searchParams.get('tag')
+    if (t) setActiveTag(t)
+  }, [searchParams])
   const tagCounts = useMemo(() => {
     const m = new Map<string, number>()
     for (const t of nonArchived)
