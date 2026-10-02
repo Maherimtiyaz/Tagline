@@ -171,3 +171,15 @@ Six defects found & fixed: dead `--duration-normal` token; missing inbox loading
 - ✅ Build clean (✓ 1.38s); lint 0 errors; all 7 routes return 200
 
 **Files touched:** `src/data/types.ts`, `src/lib/store.ts`, `src/components/ui/ThoughtCard.tsx`, `src/components/ui/CommandPalette.tsx`, `src/features/workspace/InboxPage.tsx`, `qa/phase25-star.test.ts`, `PHASES_REPORT.md`
+
+
+### Phase 26 — Sidebar Signals & Tag Counts (extension) ✅ SHIPPED
+- AppShell sidebar now surfaces **starred/pinned count chips** (only when >0), deep-linking to `/app/inbox?signal=starred|pinned`.
+- New **Tags** section in the sidebar: top 8 tags by usage across active (non-archived) thoughts, with tabular-nums counts; click toggles the inbox tag filter (`?tag=`), aria-pressed state reflects active filter.
+- InboxPage consumes `?signal=`: shows a single-bucket view with an accessible "Showing starred/pinned thoughts only" status banner + "show all" clear button; plain navigation resets filters (tag sync effect now clears on absent param too).
+- Aggregation mirrors Phase 23/24 case-insensitive semantics; archived rows excluded from all three counters.
+- ✅ `qa/phase26-sidebar.test.ts`: 19/19 pass (seeded baselines, star/pin independence, archive exclusion, add/remove live registry updates, normalization idempotency, persistence round-trip, resetDemo zeroing)
+- ✅ Full regression green: P18 17/17 · P19 22/22 · P21 27/27 · P22 18/18 · P23 21/21 · P24 16/16 · P25 24/24
+- ✅ Build clean (✓ 4.03s); lint 0 errors (5 pre-existing warnings); all 8 routes return 200
+
+**Files touched:** `src/components/layout/AppShell.tsx`, `src/features/workspace/InboxPage.tsx`, `qa/phase26-sidebar.test.ts`, `PHASES_REPORT.md`

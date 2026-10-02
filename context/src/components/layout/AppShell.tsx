@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
   Archive,
@@ -14,6 +14,8 @@ import {
   Settings,
   PanelLeftClose,
   PanelLeftOpen,
+  Pin,
+  Star,
 } from 'lucide-react'
 import { useAppStore, collectionSlug } from '../../lib/store'
 import { useThemeStore } from '../../lib/theme'
@@ -64,6 +66,28 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const rawCount = thoughts.filter((t) => t.status === 'raw').length
   const draftCount = thoughts.filter((t) => t.status !== 'archived' && (t.text.trim() === '' || (t.status === 'raw' && t.outputs.length === 0))).length
+
+  /* Phase 26: sidebar signal counts — starred / pinned across active thoughts. */
+  const starredCount = thoughts.filter((t) => t.status !== 'archived' && t.starred).length
+  const pinnedCount = thoughts.filter((t) => t.status !== 'archived' && t.pinned).length
+
+  /* Phase 26: top tags with per-tag counts (active thoughts only), same
+     case-insensitive aggregation the inbox filter row uses (Phase 23/24). */
+  const tagCounts = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const t of thoughts) {
+      if (t.status === 'archived') continue
+      for (const tag of t.tags ?? []) m.set(tag, (m.get(tag) ?? 0) + 1)
+    }
+    return [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+  }, [thoughts])
+
+  /* Toggle-filter: if this tag is already the active inbox filter, clicking
+     it again clears back to /app/inbox (InboxPage's sync effect resets). */
+  const onTagClick = (tag: string) => {
+    const filtered = location.search.includes(`tag=${encodeURIComponent(tag)}`)
+    navigate(filtered ? '/app/inbox' : `/app/inbox?tag=${encodeURIComponent(tag)}`)
+  }
 
   /** Create a blank thought and open the editor for it. */
   const onNewThought = () => {
@@ -146,6 +170,35 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </button>
           ))}
 
+          {/* Phase 26: signal shortcuts — starred / pinned jump straight to a
+              filtered inbox view (deep links consumed by InboxPage). */}
+          {!collapsed && (starredCount > 0 || pinnedCount > 0) && (
+            <div className="mt-1 flex gap-1.5 pl-1" role="group" aria-label="Signal shortcuts">
+              {starredCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => navigate('/app/inbox?signal=starred')}
+                  title="Show starred thoughts"
+                  className="flex items-center gap-1 rounded-full border border-line px-1.5 py-px font-mono text-3xs text-ink-subtle transition-colors hover:border-accent hover:text-accent focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:outline-none"
+                >
+                  <Star size={9} className="text-amber" aria-hidden />
+                  {starredCount}
+                </button>
+              )}
+              {pinnedCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => navigate('/app/inbox?signal=pinned')}
+                  title="Show pinned thoughts"
+                  className="flex items-center gap-1 rounded-full border border-line px-1.5 py-px font-mono text-3xs text-ink-subtle transition-colors hover:border-accent hover:text-accent focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:outline-none"
+                >
+                  <Pin size={9} aria-hidden />
+                  {pinnedCount}
+                </button>
+              )}
+            </div>
+          )}
+
           {!collapsed && (
             <>
               <p className="label-mono px-2 pb-1 pt-5">Collections</p>
@@ -164,6 +217,32 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </button>
               ))}
               <NewCollectionInline navigate={navigate} />
+
+              {/* Phase 26: top tags with counts — click to filter the inbox. */}
+              {tagCounts.length > 0 && (
+                <>
+                  <p className="label-mono px-2 pb-1 pt-5">Tags</p>
+                  {tagCounts.slice(0, 8).map(([tag, count]) => {
+                    const on = location.search.includes(`tag=${encodeURIComponent(tag)}`)
+                    return (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => onTagClick(tag)}
+                        aria-pressed={on}
+                        title={on ? `Clear #${tag} filter` : `Filter inbox by #${tag}`}
+                        className={cn(
+                          'flex w-full items-center gap-2 rounded-md px-2 py-1 text-sm transition-colors focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:outline-none',
+                          on ? 'bg-accent-soft text-accent' : 'text-ink-muted hover:bg-surface-hover hover:text-ink',
+                        )}
+                      >
+                        <span className="truncate font-mono text-2xs">#{tag}</span>
+                        <span className="ml-auto font-mono text-3xs tabular-nums text-ink-faint">{count}</span>
+                      </button>
+                    )
+                  })}
+                </>
+              )}
             </>
           )}
         </nav>

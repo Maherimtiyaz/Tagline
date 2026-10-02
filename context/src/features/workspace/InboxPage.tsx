@@ -92,9 +92,18 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
      the same state. */
   const [searchParams] = useSearchParams()
   const [activeTag, setActiveTag] = useState<string | null>(() => searchParams.get('tag'))
+  /* Phase 26: ?signal=starred|pinned deep links from the sidebar — show only
+     that bucket; any other navigation (or clearing) restores normal view. */
+  const [signal, setSignal] = useState<'starred' | 'pinned' | null>(() => {
+    const s = searchParams.get('signal')
+    return s === 'starred' || s === 'pinned' ? s : null
+  })
   useEffect(() => {
     const t = searchParams.get('tag')
     if (t) setActiveTag(t)
+    else setActiveTag(null) // sidebar tag toggle-off navigates to plain /app/inbox
+    const s = searchParams.get('signal')
+    setSignal(s === 'starred' || s === 'pinned' ? s : null)
   }, [searchParams])
   const tagCounts = useMemo(() => {
     const m = new Map<string, number>()
@@ -355,7 +364,25 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
         ) : (
           /* ---------- GROUPED LIST ---------- */
           <div className="space-y-7">
-            {[{ label: 'Starred', list: starredList }, { label: 'Pinned', list: pinnedList }, { label: 'Today', list: today }, { label: 'Earlier', list: earlier }].map(({ label, list }) =>
+            {signal && (
+              <div className="-mt-2 flex items-center gap-2 rounded-md border border-accent-line bg-accent-soft px-3 py-1.5 text-sm text-accent-ink" role="status">
+                <span>Showing {signal === 'starred' ? 'starred' : 'pinned'} thoughts only.</span>
+                <button
+                  type="button"
+                  onClick={() => navigate('/app/inbox')}
+                  className="ml-auto inline-flex items-center gap-1 font-mono text-3xs underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-line"
+                >
+                  <X size={10} aria-hidden /> show all
+                </button>
+              </div>
+            )}
+            {(
+              signal === 'starred'
+                ? [{ label: 'Starred', list: starredList }]
+                : signal === 'pinned'
+                  ? [{ label: 'Pinned', list: pinnedList }]
+                  : [{ label: 'Starred', list: starredList }, { label: 'Pinned', list: pinnedList }, { label: 'Today', list: today }, { label: 'Earlier', list: earlier }]
+            ).map(({ label, list }) =>
               list.length === 0 ? null : (
                 <section key={label} aria-label={label}>
                   <p className="label-mono mb-2">{label}</p>
