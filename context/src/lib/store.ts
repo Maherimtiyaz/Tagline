@@ -12,6 +12,12 @@ import type {
 import { COLLECTIONS, SEED_THOUGHTS, SEED_TIMELINE } from '../data/mock'
 import { analyzeThought, generateOutput, retune, uid } from './mockAI'
 
+/* Phase 23 — tag normalization: trim, collapse inner whitespace, drop
+   leading '#', cap length. Returns '' for unusable input. */
+export function normalizeTag(raw: string): string {
+  return raw.trim().replace(/^#+/, '').replace(/\s+/g, ' ').slice(0, 24)
+}
+
 /* ============================================================
    Global app store — thoughts, timeline, editor selection,
    command palette, toasts. All local; reset restores seeds.
@@ -167,6 +173,14 @@ interface AppState {
   unarchiveThought: (id: string) => void
   /** Phase 22 — pin/unpin; pinned thoughts float to the top of inbox views. */
   togglePin: (id: string) => boolean
+
+  /* ---- Phase 23: tags — user-editable labels for inbox filtering ---- */
+  /** Add a normalized tag to one thought. False when empty/dupe/unknown. */
+  addTag: (id: string, tag: string) => boolean
+  /** Remove a tag (case-insensitive). Returns whether anything changed. */
+  removeTag: (id: string, tag: string) => boolean
+  /** Rename a tag across every thought carrying it. Returns thoughts touched. */
+  renameTag: (from: string, to: string) => number
 
   /** Run understanding for a thought (stage-2 data only; UI animates stages). */
   understand: (id: string) => void
@@ -466,6 +480,52 @@ export const useAppStore = create<AppState>()(
     return next
   },
 
+  /* ---- Phase 23: tags — user-editable labels for inbox filtering ---- */
+
+  addTag: (id, rawTag) => {
+    const tag = normalizeTag(rawTag)
+    if (!tag) return false
+    const target = get().thoughts.find((t) => t.id === id)
+    if (!target) return false
+    const tags = target.tags ?? []
+    /* Idempotent on case-insensitive match — "Email" and "email" are one tag. */
+    if (tags.some((x) => x.toLowerCase() === tag.toLowerCase())) return false
+    set((s) => ({
+      thoughts: s.thoughts.map((t) => (t.id === id ? { ...t, tags: [...(t.tags ?? []), tag] } : t)),
+    }))
+    return true
+  },
+
+  removeTag: (id, tag) => {
+    const target = get().thoughts.find((t) => t.id === id)
+    if (!target?.tags) return false
+    const kept = target.tags.filter((x) => x.toLowerCase() !== tag.toLowerCase())
+    if (kept.length === target.tags.length) return false
+    set((s) => ({
+      thoughts: s.thoughts.map((t) => (t.id === id ? { ...t, tags: kept.length ? kept : undefined } : t)),
+    }))
+    return true
+  },
+
+  renameTag: (from, to) => {
+    const oldT = normalizeTag(from)
+    const newT = normalizeTag(to)
+    if (!oldT || !newT || oldT.toLowerCase() === newT.toLowerCase()) return 0
+    let touched = 0
+    set((s) => ({
+      thoughts: s.thoughts.map((t) => {
+        if (!t.tags?.some((x) => x.toLowerCase() === oldT.toLowerCase())) return t
+        touched++
+        /* Collide-safe: if the thought already carries the new tag, merge. */
+        const merged = t.tags.some((x) => x.toLowerCase() === newT.toLowerCase())
+          ? t.tags.filter((x) => x.toLowerCase() !== oldT.toLowerCase())
+          : t.tags.map((x) => (x.toLowerCase() === oldT.toLowerCase() ? newT : x))
+        return { ...t, tags: merged.length ? merged : undefined }
+      }),
+    }))
+    return touched
+  },
+
   deleteThought: (id) => {
     /* Phase 21: capture the row + index so the toast can offer Undo. */
     const idx = get().thoughts.findIndex((t) => t.id === id)
@@ -492,16 +552,15 @@ export const useAppStore = create<AppState>()(
     const text = thought?.text ?? ''
     const output = generateOutput(text, { type, tone })
     set((s) => ({
-      thoughts: s.thoughts.map((t) =>
-        t.id === id
-          ? {
-              ...t,
-              status: 'processed',
-              understanding: t.understanding ?? analyzeThought(t.text).understanding,
-              outputs: [output, ...t.outputs],
-            }
-          : t,
-      ),
+      thoughts: s.thoughts.map((t) => {
+        if (t.id !== id) return t
+        const understanding = t.understanding ?? analyzeThought(t.text).understanding
+        /* Phase 23: seed user tags from extracted topics on first
+           transform — only when the thought has no tags yet, so later
+           manual edits (incl. deliberate removals) are never overwritten. */
+        const tags = t.tags?.length ? t.tags : (understanding.topics.slice(0, 4) || undefined)
+        return { ...t, status: 'processed' as const, understanding, outputs: [output, ...t.outputs], tags }
+      }),
       timeline: [
         ...s.timeline,
         {

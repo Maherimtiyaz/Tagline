@@ -28,6 +28,7 @@ export function ThoughtCard({
   status,
   outputCount,
   pinned,
+  tags,
   onOpen,
   onTransform,
   onDelete,
@@ -41,6 +42,8 @@ export function ThoughtCard({
   outputCount: number
   /** Phase 22 — pinned thoughts float to the top of inbox views. */
   pinned?: boolean
+  /** Phase 23 — user tags rendered as quiet chips on the meta row. */
+  tags?: string[]
   onOpen: () => void
   onTransform: () => void
   /** When provided (Drafts view), replaces Archive with Delete. */
@@ -97,6 +100,12 @@ export function ThoughtCard({
               Pinned
             </span>
           )}
+          {/* Phase 23 — quiet tag chips */}
+          {(tags ?? []).slice(0, 3).map((tag) => (
+            <span key={tag} className="inline-flex items-center rounded-md border border-line bg-canvas-deep px-1.5 py-0.5 font-mono text-3xs text-ink-subtle">
+              #{tag}
+            </span>
+          ))}
           <span className="font-mono text-3xs tabular-nums text-ink-subtle">{timeAgo(createdAt)}</span>
           <Badge tone="outline" className="gap-1">
             {SOURCE_META[source].icon}

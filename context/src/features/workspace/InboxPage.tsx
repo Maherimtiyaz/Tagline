@@ -85,11 +85,25 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
 
   const meta = VIEW_META[view]
   const nonArchived = thoughts.filter((t) => t.status !== 'archived')
-  const scoped = useMemo(() => {
+  /* Phase 23: tag filter chips — every distinct tag across active thoughts,
+     with counts. Selection is view-local (not persisted). */
+  const [activeTag, setActiveTag] = useState<string | null>(null)
+  const tagCounts = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const t of nonArchived)
+      for (const tag of t.tags ?? []) m.set(tag, (m.get(tag) ?? 0) + 1)
+    return [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+  }, [nonArchived])
+
+  const scopedBase = useMemo(() => {
     if (view === 'inbox') return nonArchived.filter((t) => t.status === 'raw')
     if (view === 'workspace') return nonArchived
     return nonArchived.filter((t) => t.text.trim() === '' || (t.status === 'raw' && t.outputs.length === 0))
   }, [view, nonArchived])
+  const scoped = useMemo(
+    () => (activeTag ? scopedBase.filter((t) => t.tags?.some((x) => x.toLowerCase() === activeTag.toLowerCase())) : scopedBase),
+    [scopedBase, activeTag],
+  )
 
   const results = useMemo(() => {
     if (!query.trim()) return null
@@ -213,6 +227,41 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
         </button>
       </header>
 
+      {/* Phase 23: tag filter row (only when tags exist in this data set) */}
+      {tagCounts.length > 0 && (
+        <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-line px-4 py-2 md:px-6" role="group" aria-label="Filter by tag">
+          {tagCounts.slice(0, 10).map(([tag, count]) => {
+            const on = activeTag === tag
+            return (
+              <button
+                key={tag}
+                type="button"
+                onClick={() => setActiveTag(on ? null : tag)}
+                aria-pressed={on}
+                className={cn(
+                  'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 font-mono text-3xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-line',
+                  on
+                    ? 'border-accent-line bg-accent-soft text-accent-ink'
+                    : 'border-line bg-canvas-deep text-ink-subtle hover:border-line-strong hover:text-ink-muted',
+                )}
+              >
+                #{tag}
+                <span className="tabular-nums opacity-60">{count}</span>
+              </button>
+            )
+          })}
+          {activeTag && (
+            <button
+              type="button"
+              onClick={() => setActiveTag(null)}
+              className="inline-flex items-center gap-1 rounded-full px-2 py-1 font-mono text-3xs text-ink-faint hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-line"
+            >
+              <X size={10} aria-hidden /> clear
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 md:px-6">
         {!booted ? (
           /* ---------- LOADING (store rehydration) ---------- */
@@ -272,14 +321,20 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
             )}
           </div>
         ) : scoped.length === 0 ? (
-          /* ---------- EMPTY ---------- */
+          /* ---------- EMPTY (tag-filtered vs genuinely empty) ---------- */
           <EmptyState
-            title={meta.emptyTitle}
-            body={meta.emptyBody}
+            title={activeTag ? `Nothing tagged #${activeTag}.` : meta.emptyTitle}
+            body={activeTag ? 'No thoughts in this view carry that tag. Clear the filter to see everything, or add the tag from a thought\'s editor.' : meta.emptyBody}
             action={
-              <button type="button" onClick={onNew} className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-ink hover:bg-accent-hover">
-                Start a thought
-              </button>
+              activeTag ? (
+                <button type="button" onClick={() => setActiveTag(null)} className="rounded-md border border-line px-4 py-2 text-sm font-medium text-ink hover:border-line-strong">
+                  Clear filter
+                </button>
+              ) : (
+                <button type="button" onClick={onNew} className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-ink hover:bg-accent-hover">
+                  Start a thought
+                </button>
+              )
             }
           />
         ) : (

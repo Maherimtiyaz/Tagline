@@ -94,6 +94,9 @@ export interface Thought {
   collectionId?: string
   /** Phase 22 — pinned thoughts sort to the top of every inbox view. */
   pinned?: boolean
+  /** Phase 22b — user tags for filtering. Seeded from extracted topics
+   *  on first transform; fully editable (add / rename / remove). */
+  tags?: string[]
 }
 
 /* ---------- History / timeline ---------- */

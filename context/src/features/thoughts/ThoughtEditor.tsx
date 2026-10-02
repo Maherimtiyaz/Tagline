@@ -9,6 +9,7 @@ import { OUTPUT_TYPES, STAGE_COPY, STAGE_ORDER } from '../../lib/outputMeta'
 import { useTransformPipeline } from '../../hooks/useTransformPipeline'
 import { useReducedMotion } from '../../hooks/useReducedMotion'
 import { ContextPanelBody } from '../../components/ui/ContextChip'
+import { TagEditor } from '../../components/ui/TagEditor'
 import { StageRail, ThoughtScatter, Waveform } from '../../animations/Transformation'
 import { OutputEditor } from '../../components/ui/OutputEditor'
 import { VoiceCapture } from '../voice/VoiceCapture'
@@ -396,6 +397,9 @@ export function ThoughtEditor({ thoughtId, onClose, initialType }: { thoughtId: 
                 <p className="label-mono">Understanding</p>
               </div>
               <ContextPanelBody u={analyzeThought(thought.text).understanding} />
+              {/* Phase 23 — user tags, seeded from topics on transform */}
+              <p className="label-mono mt-6 mb-2">Tags</p>
+              <TagEditor thoughtId={thought.id} />
               <p className="label-mono mt-6 mb-2">Original thought</p>
               <p className="font-mono text-2xs leading-relaxed text-ink-subtle">"{thought.text}"</p>
             </aside>
