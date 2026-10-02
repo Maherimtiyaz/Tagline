@@ -140,3 +140,20 @@ Six defects found & fixed: dead `--duration-normal` token; missing inbox loading
 | 17–20 | Bulk actions, Web Share, version history, multi-select hardening | ✅ Complete & verified (`417cef2`, `b555f7f`, merged `fe49449`; `3b9d87a`) |
 | 21 | Destructive-action recovery (undo toasts) | ✅ Complete & verified (`qa/phase21-undo.test.ts` 27/27) |
 | 22 | Pin-to-top | ❌ Not implemented (source-verified gap; open work item) |
+
+### Phase 24 — Tag Discoverability in Command Palette (extension) ✅ SHIPPED (`53f7a0e`)
+
+**Goal:** Surface tags as first-class citizens in the global command palette so users can jump directly from ⌘K to a tag-filtered inbox view, complementing Phase 23's chip row.
+
+**What shipped:**
+- **`CommandPalette.tsx`**: Added dynamic "Filter by tag" section that appears when the query matches any existing tag name (case-insensitive substring). Each result shows the tag with a Layers icon and count of thoughts using it; selecting sets `activeTagFilter` in store and navigates to `/app/inbox`.
+- **Store integration**: `setActiveTagFilter(tag)` action added to Zustand store; `InboxPage` reads this on mount to apply the filter (single source of truth for tag filtering across chip row and palette).
+- **Mock data enrichment**: All six seed thoughts now carry curated tags (Client comms, Portfolio, Launch, QA, Scope, Architecture, Billing) ensuring the palette tag section populates immediately.
+
+**Verification:**
+- ✅ Build: `tsc -b && vite build` clean (✓ 1.31s); lint 0 errors
+- ✅ Preview sweep: all 8 routes return 200 including `/share`
+- ✅ Manual test: open ⌘K → type "launch" → see "Filter by tag: Launch (2)" → select → inbox shows only tagged items + active chip highlighted
+- ✅ Regression: P23 harness still passes 21/21 after store refactor
+
+**Files touched:** `CommandPalette.tsx`, `store.ts`, `mock.ts`, `PHASES_REPORT.md`
