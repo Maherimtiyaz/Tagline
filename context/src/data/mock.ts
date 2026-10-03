@@ -36,6 +36,7 @@ export const SEED_THOUGHTS: Thought[] = [
     id: 'th-launch',
     text: 'I want to launch my portfolio next month. three case studies max, no screenshots without outcomes, and a short launch post. need a plan that fits around client work.',
     source: 'text',
+    starred: true,
     createdAt: now - 3 * hr,
     status: 'processed',
     outputs: [
@@ -48,6 +49,7 @@ export const SEED_THOUGHTS: Thought[] = [
     id: 'th-fixes',
     text: 'Things we need to fix before Friday: mobile nav overlaps hero at 375px, hero images are 4MB, pricing table contrast fails AA. also footer links still point at staging.',
     source: 'import',
+    pinned: true,
     createdAt: now - 5 * hr,
     status: 'raw',
     outputs: [],

@@ -17,20 +17,24 @@ ok('flag persisted on thought row', S().thoughts.find((t) => t.id === seedIds[0]
 ok('second call unpins → returns false', S().togglePin(seedIds[0]) === false)
 ok('unpin clears flag', S().thoughts.find((t) => t.id === seedIds[0])?.pinned === false)
 
-// 2. unknown id guard
+// 2. unknown id guard (Phase 28 note: seeds now ship a pre-pinned row, so "untouched"
+// means the pinned *count* is unchanged, not that zero rows are pinned)
+const pinnedBefore = S().thoughts.filter((t) => t.pinned).length
 ok('unknown id returns false', S().togglePin('nope-123') === false)
-ok('unknown id leaves thoughts untouched', S().thoughts.every((t) => !t.pinned))
+ok('unknown id leaves thoughts untouched', S().thoughts.filter((t) => t.pinned).length === pinnedBefore)
 
 // 3. pinning does not mutate other rows / statuses
 const before = JSON.stringify(S().thoughts.map((t) => [t.id, t.status, t.text]))
 S().togglePin(seedIds[1])
 const after = JSON.stringify(S().thoughts.map((t) => [t.id, t.status, t.text]))
 ok('other rows unchanged by pin', before === after)
-ok('only target pinned', S().thoughts.filter((t) => t.pinned).map((t) => t.id).join() === seedIds[1])
+ok('only target newly pinned', S().thoughts.filter((t) => t.pinned && !seedIds.includes(t.id)).length === 0
+  && S().thoughts.find((t) => t.id === seedIds[1])?.pinned === true
+  && S().thoughts.filter((t) => t.pinned).length === pinnedBefore + 1)
 
 // 4. multiple pins coexist; order within scoped list preserved (store keeps createdAt desc for extras + seeds appended)
 S().togglePin(seedIds[3])
-ok('two pinned simultaneously', S().thoughts.filter((t) => t.pinned).length === 2)
+ok('two newly pinned simultaneously', S().thoughts.filter((t) => t.pinned).length === pinnedBefore + 2)
 
 // 5. inbox grouping simulation mirrors InboxPage logic: pinned float above Today/Earlier
 const nonArchived = S().thoughts.filter((t) => t.status !== 'archived')
@@ -63,9 +67,9 @@ S().togglePin(nid)
 ok('new thought pinnable', S().thoughts.find((t) => t.id === nid)?.pinned === true)
 S().deleteThought(nid)
 
-// cleanup: unpin remaining
+// cleanup: unpin test-pinned rows only (seed-pinned row from Phase 28 stays pinned by design)
 S().togglePin(seedIds[1]); S().togglePin(seedIds[3])
-ok('cleanup leaves zero pinned', S().thoughts.every((t) => !t.pinned))
+ok('cleanup restores baseline pinned count', S().thoughts.filter((t) => t.pinned).length === pinnedBefore)
 
 console.log(`\n${pass}/${pass + fail} passed`)
 process.exit(fail ? 1 : 0)
