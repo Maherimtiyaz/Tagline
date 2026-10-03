@@ -75,6 +75,13 @@ export interface GeneratedOutput {
   tone: ToneId
   /** Newest-first archived snapshots of this output (max 12). */
   versions?: OutputVersion[]
+  /** Phase 29 — lightweight 👍/👎 feedback loop on generated outputs. */
+  feedback?: OutputFeedback
+}
+
+export interface OutputFeedback {
+  rating: 'helpful' | 'needs-work'
+  at: number
 }
 
 export interface Suggestion {

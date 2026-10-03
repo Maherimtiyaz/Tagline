@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Check, ChevronDown, Copy, Download, FolderOpen, History, Link2, Quote, Save, RotateCcw, Trash2 } from 'lucide-react'
+import { Check, ChevronDown, Copy, Download, FolderOpen, History, Link2, Quote, Save, RotateCcw, ThumbsDown, ThumbsUp, Trash2 } from 'lucide-react'
 import type { GeneratedOutput, OutputType, ToneId } from '../../data/types'
 import { COLLECTIONS } from '../../data/mock'
 import { OUTPUT_TYPES, TONES } from '../../lib/outputMeta'
@@ -33,6 +33,7 @@ export function OutputEditor({
   const saveToCollection = useAppStore((s) => s.saveToCollection)
   const userCollections = useAppStore((s) => s.userCollections)
   const pushToast = useAppStore((s) => s.pushToast)
+  const rateOutput = useAppStore((s) => s.rateOutput)
   const [copied, setCopied] = useState(false)
   const [shareState, setShareState] = useState<'idle' | 'done' | 'fail'>('idle')
   const [drafting, setDrafting] = useState<string | null>(null)
@@ -222,6 +223,8 @@ export function OutputEditor({
           {/* Phase 19 — version history popover */}
           <VersionHistory thoughtId={thoughtId} output={output} />
         </div>
+        {/* Phase 29 — 👍/👎 feedback loop (spec §56 quality signal) */}
+        <FeedbackRow thoughtId={thoughtId} output={output} rate={rateOutput} />
         <div className="flex flex-wrap items-center gap-2">
           <span className="label-mono">Tone</span>
           <SegmentedControl
@@ -263,6 +266,56 @@ export function OutputEditor({
           </button>
         </div>
       </footer>
+    </div>
+  )
+}
+
+/* ============================================================
+   FeedbackRow — Phase 29. 👍/👎 quality signal on every output.
+   Toggle semantics: tapping the active rating clears it; the
+   opposite rating replaces in place. Ratings land in the global
+   History timeline (Phase 18 pattern) so §56 conversion tracking
+   can count helpful vs rework-flagged drafts.
+   ============================================================ */
+
+export function FeedbackRow({
+  thoughtId,
+  output,
+  rate,
+}: {
+  thoughtId: string
+  output: GeneratedOutput
+  rate: (thoughtId: string, outputId: string, rating: 'helpful' | 'needs-work') => boolean
+}) {
+  const current = output.feedback?.rating
+  const btn = (rating: 'helpful' | 'needs-work', Icon: typeof ThumbsUp, label: string) => (
+    <button
+      key={rating}
+      type="button"
+      aria-pressed={current === rating}
+      aria-label={current === rating ? `${label} — tap to clear feedback` : `Mark this draft as ${label}`}
+      onClick={() => rate(thoughtId, output.id, rating)}
+      className={cn(
+        'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-2xs font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+        current === rating && rating === 'helpful' && 'border-emerald bg-emerald-soft text-emerald',
+        current === rating && rating === 'needs-work' && 'border-coral bg-coral-soft text-coral',
+        current !== rating && 'border-line text-ink-muted hover:border-line-strong hover:text-ink',
+      )}
+    >
+      <Icon size={12} aria-hidden />
+      {label}
+    </button>
+  )
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="label-mono">Was this useful?</span>
+      {btn('helpful', ThumbsUp, 'Helpful')}
+      {btn('needs-work', ThumbsDown, 'Needs work')}
+      {current && (
+        <span className="text-2xs text-ink-faint tabular-nums" role="status">
+          {current === 'helpful' ? 'Noted as helpful' : 'Flagged for rework'} · saved
+        </span>
+      )}
     </div>
   )
 }
