@@ -40,7 +40,8 @@ ok('input array not mutated', many[0].id === 'old')
 // --- renderable groups --------------------------------------------------
 const all = priorityGroups(mix)
 ok('full view renders 4 labelled groups in order', all.map((x) => x.label).join('|') === 'Starred|Pinned|Today|Earlier')
-ok('empty buckets dropped', priorityGroups([t('z')]).map((x) => x.label).join() === 'Today')
+// fresh thought (default createdAt = 2 days ago) lands in Earlier; the three empty buckets drop
+ok('empty buckets dropped', priorityGroups([t('z')]).map((x) => x.label).join() === 'Earlier')
 ok('signal=starred narrows to one bucket', priorityGroups(mix, 'starred').map((x) => x.label).join() === 'Starred')
 ok('signal=pinned narrows to one bucket', priorityGroups(mix, 'pinned').map((x) => x.label).join() === 'Pinned')
 ok('signal with no members renders nothing', priorityGroups([t('q')], 'starred').length === 0)

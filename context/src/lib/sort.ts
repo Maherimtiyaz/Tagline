@@ -52,8 +52,8 @@ export function priorityGroups(
   signal?: 'starred' | 'pinned' | null,
 ): SignalGroup[] {
   const g = groupByPriority(thoughts)
-  if (signal === 'starred') return [{ label: 'Starred', list: g.starred }]
-  if (signal === 'pinned') return [{ label: 'Pinned', list: g.pinned }]
+  if (signal === 'starred') return g.starred.length ? [{ label: 'Starred', list: g.starred }] : []
+  if (signal === 'pinned') return g.pinned.length ? [{ label: 'Pinned', list: g.pinned }] : []
   return [
     { label: 'Starred', list: g.starred },
     { label: 'Pinned', list: g.pinned },
