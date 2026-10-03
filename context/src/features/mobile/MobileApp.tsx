@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowLeft, Check, Download, Home, Inbox, Settings as SettingsIcon, History as HistoryIcon, Share2, X } from 'lucide-react'
+import { ArrowLeft, Check, Download, Home, Inbox, Settings as SettingsIcon, History as HistoryIcon, Share2, ThumbsDown, ThumbsUp, X } from 'lucide-react'
 import type { OutputType } from '../../data/types'
 import { useAppStore } from '../../lib/store'
 import { analyzeThought } from '../../lib/mockAI'
@@ -41,6 +41,7 @@ export function MobileApp() {
   const transform = useAppStore((s) => s.transform)
   const addThought = useAppStore((s) => s.addThought)
   const pushToast = useAppStore((s) => s.pushToast)
+  const rateOutput = useAppStore((s) => s.rateOutput)
   const timeline = useAppStore((s) => s.timeline)
 
   const [tab, setTab] = useState<Tab>('home')
@@ -235,6 +236,35 @@ export function MobileApp() {
                 <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-ink">{output.body}</pre>
               </div>
               <div className="flex gap-2 border-t border-line px-4 py-3">
+                {/* Phase 29 — 👍/👎 feedback, mobile parity (min-h-11 touch targets) */}
+                <button
+                  type="button"
+                  aria-label={output.feedback?.rating === 'helpful' ? 'Clear helpful feedback' : 'Mark this draft as helpful'}
+                  aria-pressed={output.feedback?.rating === 'helpful'}
+                  onClick={() => active && rateOutput(active.id, output.id, 'helpful')}
+                  className={cn(
+                    'flex min-h-11 items-center justify-center gap-1 rounded-lg border px-3 text-sm transition-colors',
+                    output.feedback?.rating === 'helpful'
+                      ? 'border-emerald bg-emerald-soft text-emerald'
+                      : 'border-line text-ink-muted hover:text-ink',
+                  )}
+                >
+                  <ThumbsUp size={14} />
+                </button>
+                <button
+                  type="button"
+                  aria-label={output.feedback?.rating === 'needs-work' ? 'Clear needs-work feedback' : 'Mark this draft as needing work'}
+                  aria-pressed={output.feedback?.rating === 'needs-work'}
+                  onClick={() => active && rateOutput(active.id, output.id, 'needs-work')}
+                  className={cn(
+                    'flex min-h-11 items-center justify-center gap-1 rounded-lg border px-3 text-sm transition-colors',
+                    output.feedback?.rating === 'needs-work'
+                      ? 'border-coral bg-coral-soft text-coral'
+                      : 'border-line text-ink-muted hover:text-ink',
+                  )}
+                >
+                  <ThumbsDown size={14} />
+                </button>
                 <button
                   type="button"
                   onClick={() => { navigator.clipboard?.writeText(output.body).catch(() => {}); pushToast('Copied to clipboard', 'success') }}
