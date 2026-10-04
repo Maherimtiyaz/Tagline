@@ -18,6 +18,7 @@ const MobileLazy = lazy(() => import('./features/mobile/MobileApp').then((m) => 
 const DemoLazy = lazy(() => import('./features/demo/DemoPage').then((m) => ({ default: m.DemoPage })))
 const InboxLazy = lazy(() => import('./features/workspace/InboxPage').then((m) => ({ default: m.InboxPage })))
 const HistoryLazy = lazy(() => import('./features/workspace/HistoryPage').then((m) => ({ default: m.HistoryPage })))
+const InsightsLazy = lazy(() => import('./features/insights/InsightsPage').then((m) => ({ default: m.InsightsPage })))
 const CollectionsLazy = lazy(() => import('./features/collections/CollectionsPage').then((m) => ({ default: m.CollectionsPage })))
 const TemplatesLazy = lazy(() => import('./features/templates/TemplatesPage').then((m) => ({ default: m.TemplatesPage })))
 const SettingsLazy = lazy(() => import('./features/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })))
@@ -107,6 +108,7 @@ export default function App() {
           <Route path="/app/workspace" element={<InboxScreen view="workspace" />} />
           <Route path="/app/drafts" element={<InboxScreen view="drafts" />} />
           <Route path="/app/history" element={<Shell><HistoryLazy /></Shell>} />
+          <Route path="/app/insights" element={<Shell><InsightsLazy /></Shell>} />
           <Route path="/app/templates" element={<Shell><TemplatesLazy inApp /></Shell>} />
           <Route path="/app/collections" element={<Shell><CollectionsLazy /></Shell>} />
           <Route path="/app/collections/:id" element={<Shell><CollectionsLazy /></Shell>} />

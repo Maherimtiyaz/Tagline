@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
   Archive,
+  BarChart3,
   Command,
   FileText,
   FolderPlus,
@@ -35,6 +36,7 @@ const NAV = [
   { to: '/app/workspace', label: 'Workspace', icon: Layers, end: false },
   { to: '/app/drafts', label: 'Drafts', icon: FileText, end: false },
   { to: '/app/history', label: 'History', icon: Archive, end: false },
+  { to: '/app/insights', label: 'Insights', icon: BarChart3, end: false },
   { to: '/app/templates', label: 'Templates', icon: LayoutTemplate, end: false },
   { to: '/app/collections', label: 'Collections', icon: Library, end: false },
   { to: '/app/settings', label: 'Settings', icon: Settings, end: false },
