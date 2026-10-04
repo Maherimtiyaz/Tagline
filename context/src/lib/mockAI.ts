@@ -20,6 +20,11 @@ import { OUTPUT_LABEL } from './outputMeta'
    ============================================================ */
 
 let seq = 0
+/* Date.now() alone collides inside one millisecond (e.g. rapid
+   transform + re-transform in tests), and a duplicate output id makes
+   the store's map-based updates mutate BOTH rows — silently corrupting
+   per-output state like Phase 29 feedback. The monotonic counter keeps
+   ids unique regardless of clock resolution. */
 export const uid = (p = 'id') => `${p}-${Date.now().toString(36)}-${(seq++).toString(36)}`
 
 const NAME_RE = /\b(?:to|with|tell|ask|email|cc)\s+([A-Z][a-z]+)\b|\b([A-Z][a-z]+)\s+(?:needs|said|wants|isn'?t|doesn'?t)\b/g

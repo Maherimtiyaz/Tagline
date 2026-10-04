@@ -67,6 +67,24 @@ export function HistoryPage() {
         }
       }
     }
+    /* Phase 29 — feedback ratings live on the output itself; surface them
+       in the timeline too (rateOutput's explicit events are deduped by id,
+       so seed/legacy ratings appear exactly once). */
+    for (const t of thoughts) {
+      for (const o of t.outputs) {
+        if (!o.feedback) continue
+        const key = `fb-${t.id}-${o.id}`
+        if (map.has(key)) continue
+        map.set(key, {
+          id: key,
+          thoughtId: t.id,
+          at: o.feedback.at,
+          kind: 'version',
+          label: o.feedback.rating === 'helpful' ? 'Marked helpful' : 'Flagged for rework',
+          detail: o.title,
+        })
+      }
+    }
     return [...map.values()].sort((a, b) => a.at - b.at)
   }, [timeline, thoughts])
 
