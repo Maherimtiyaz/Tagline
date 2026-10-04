@@ -77,7 +77,9 @@ toast.action!.run()
 S().rateOutput(tid2, out2.id, 'needs-work')
 {
   const json = JSON.parse(JSON.stringify(S().thoughts.find((t) => t.id === tid2)))
-  const restoredOut = json.outputs.find((o: { id: string }) => o.id === out2)
+  /* NB: compare o.id === out2.id — comparing against the whole object
+     is a string-vs-object mismatch that can never match. */
+  const restoredOut = json.outputs.find((o: { id: string }) => o.id === out2.id)
   ok('feedback serializes through localStorage pipeline', restoredOut.feedback?.rating === 'needs-work' && typeof restoredOut.feedback.at === 'number')
 }
 
