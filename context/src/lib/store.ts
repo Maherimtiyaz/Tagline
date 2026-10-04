@@ -233,6 +233,11 @@ interface AppState {
   /** Drop one archived snapshot. Returns whether it existed. */
   deleteVersion: (thoughtId: string, outputId: string, versionId: string) => boolean
 
+  /** Phase 29 — 👍/👎 on an output. Same rating again clears it (toggle). */
+  rateOutput: (thoughtId: string, outputId: string, rating: 'helpful' | 'needs-work') => boolean
+  /** Phase 29 — remove any feedback from an output. */
+  clearFeedback: (thoughtId: string, outputId: string) => boolean
+
   setSearchQuery: (q: string) => void
 
   pushToast: (
@@ -807,6 +812,68 @@ export const useAppStore = create<AppState>()(
       ),
     }))
     get().pushToast('Version deleted', 'info')
+    return true
+  },
+
+  /* ---- Phase 29: output feedback loop ---- */
+
+  rateOutput: (thoughtId, outputId, rating) => {
+    const thought = get().thoughts.find((t) => t.id === thoughtId)
+    const output = thought?.outputs.find((o) => o.id === outputId)
+    if (!thought || !output) return false
+    /* Tapping the active rating again clears it — feedback is a toggle,
+       never a forced opinion. Opposite rating replaces in place. */
+    const clearing = output.feedback?.rating === rating
+    set((s) => ({
+      thoughts: s.thoughts.map((t) =>
+        t.id === thoughtId
+          ? {
+              ...t,
+              outputs: t.outputs.map((o) =>
+                o.id === outputId
+                  ? { ...o, feedback: clearing ? undefined : { rating, at: Date.now() } }
+                  : o,
+              ),
+            }
+          : t,
+      ),
+    }))
+    if (clearing) {
+      get().pushToast('Feedback cleared', 'info')
+    } else {
+      set((s) => ({
+        timeline: [
+          ...s.timeline,
+          {
+            id: uid('ev'),
+            thoughtId,
+            at: Date.now(),
+            kind: 'save' as const,
+            label: rating === 'helpful' ? 'Marked helpful' : 'Flagged for rework',
+            detail: output.title,
+          },
+        ],
+      }))
+      get().pushToast(
+        rating === 'helpful' ? 'Thanks — noted as helpful' : 'Noted — this draft needs work',
+        'success',
+        { label: 'Undo', run: () => get().clearFeedback(thoughtId, outputId) },
+      )
+    }
+    return true
+  },
+
+  clearFeedback: (thoughtId, outputId) => {
+    const thought = get().thoughts.find((t) => t.id === thoughtId)
+    const output = thought?.outputs.find((o) => o.id === outputId)
+    if (!thought || !output || !output.feedback) return false
+    set((s) => ({
+      thoughts: s.thoughts.map((t) =>
+        t.id === thoughtId
+          ? { ...t, outputs: t.outputs.map((o) => (o.id === outputId ? { ...o, feedback: undefined } : o)) }
+          : t,
+      ),
+    }))
     return true
   },
 
