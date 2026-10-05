@@ -123,6 +123,19 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
     [scopedBase, activeTag],
   )
 
+  /* Phase 35: Workspace-only "Ready" segment — thoughts marked ready via
+     the lifecycle toggle but not yet transformed. Selection + bulk actions
+     operate on exactly what the segment shows. */
+  const [wsSegment, setWsSegment] = useState<'all' | 'ready'>('all')
+  const visibleList = useMemo(() => {
+    if (view !== 'workspace' || wsSegment === 'all') return scoped
+    return scoped.filter((t) => t.status === 'processed' && t.outputs.length === 0)
+  }, [view, wsSegment, scoped])
+  const readyCount = useMemo(
+    () => (view === 'workspace' ? scoped.filter((t) => t.status === 'processed' && t.outputs.length === 0).length : 0),
+    [view, scoped],
+  )
+
   const results = useMemo(() => {
     if (!query.trim()) return null
     const q = query.toLowerCase()
@@ -170,12 +183,13 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
   /* Phase 22: pinned thoughts float above everything in every view.
      Phase 25: starred outrank pinned — Starred / Pinned / Today / Earlier.
      Phase 28: grouping extracted to lib/sort.ts so the collection detail
-     page orders rows identically. */
-  const groups = useMemo(() => priorityGroups(scoped, signal), [scoped, signal])
+     page orders rows identically.
+     Phase 35: groups read visibleList (segment-aware), not raw scoped. */
+  const groups = useMemo(() => priorityGroups(visibleList, signal), [visibleList, signal])
 
   /* Visible ids for bulk actions — "Select all" only ever touches what
      the user can see in this view, never hidden/stale selections. */
-  const visibleIds = useMemo(() => scoped.map((t) => t.id), [scoped])
+  const visibleIds = useMemo(() => visibleList.map((t) => t.id), [visibleList])
   const visibleSelected = useMemo(
     () => selectedIds.filter((id) => visibleIds.includes(id)),
     [selectedIds, visibleIds],
@@ -246,6 +260,33 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
           <Plus size={14} aria-hidden /> New
         </button>
       </header>
+
+      {/* Phase 35: Workspace segment control — All vs Ready (marked ready,
+          not yet transformed). */}
+      {view === 'workspace' && !query.trim() && scoped.length > 0 && (
+        <div className="flex shrink-0 items-center gap-1.5 border-b border-line px-4 py-2 md:px-6" role="group" aria-label="Filter workspace by lifecycle">
+          {(['all', 'ready'] as const).map((seg) => {
+            const on = wsSegment === seg
+            return (
+              <button
+                key={seg}
+                type="button"
+                onClick={() => setWsSegment(seg)}
+                aria-pressed={on}
+                className={cn(
+                  'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 font-mono text-3xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-line',
+                  on
+                    ? 'border-accent-line bg-accent-soft text-accent-ink'
+                    : 'border-line bg-canvas-deep text-ink-subtle hover:border-line-strong hover:text-ink-muted',
+                )}
+              >
+                {seg}
+                <span className="tabular-nums opacity-60">{seg === 'all' ? scoped.length : readyCount}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       {/* Phase 23: tag filter row (only when tags exist in this data set) */}
       {tagCounts.length > 0 && (
@@ -340,15 +381,19 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
               <EmptyState title="Nothing matches that." body="Try a name, a day of the week, or a word from the thought itself." />
             )}
           </div>
-        ) : scoped.length === 0 ? (
-          /* ---------- EMPTY (tag-filtered vs genuinely empty) ---------- */
+        ) : visibleList.length === 0 ? (
+          /* ---------- EMPTY (tag-filtered vs segment vs genuinely empty) ---------- */
           <EmptyState
-            title={activeTag ? `Nothing tagged #${activeTag}.` : meta.emptyTitle}
-            body={activeTag ? 'No thoughts in this view carry that tag. Clear the filter to see everything, or add the tag from a thought\'s editor.' : meta.emptyBody}
+            title={activeTag ? `Nothing tagged #${activeTag}.` : wsSegment === 'ready' && scoped.length > 0 ? 'Nothing marked ready yet.' : meta.emptyTitle}
+            body={activeTag ? 'No thoughts in this view carry that tag. Clear the filter to see everything, or add the tag from a thought\'s editor.' : wsSegment === 'ready' && scoped.length > 0 ? 'Open a draft and press "Mark ready" — it will queue up here, waiting to become an output.' : meta.emptyBody}
             action={
               activeTag ? (
                 <button type="button" onClick={() => setActiveTag(null)} className="rounded-md border border-line px-4 py-2 text-sm font-medium text-ink hover:border-line-strong">
                   Clear filter
+                </button>
+              ) : wsSegment === 'ready' && scoped.length > 0 ? (
+                <button type="button" onClick={() => setWsSegment('all')} className="rounded-md border border-line px-4 py-2 text-sm font-medium text-ink hover:border-line-strong">
+                  Show all
                 </button>
               ) : (
                 <button type="button" onClick={onNew} className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-ink hover:bg-accent-hover">

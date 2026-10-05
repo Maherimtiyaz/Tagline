@@ -275,6 +275,15 @@ interface AppState {
   /** Phase 25 — star/unstar; starred rows sort above pinned rows. */
   toggleStar: (id: string) => boolean
 
+  /* ---- Phase 35: thought lifecycle — draft vs ready ---- */
+  /** Flip raw ↔ processed. Returns the new status, or null for unknown ids.
+   *  Rows that already carry outputs are locked as "ready" (data safety). */
+  setStatus: (id: string, status: Extract<ThoughtStatus, 'raw' | 'processed'>) => ThoughtStatus | null
+  /** Convenience toggle used by card shortcuts / palette actions. */
+  toggleStatus: (id: string) => ThoughtStatus | null
+  /** Count thoughts in a given status (used by tests + Insights chips). */
+  countByStatus: (status: ThoughtStatus) => number
+
   /* ---- Phase 23: tags — user-editable labels for inbox filtering ---- */
   /** Add a normalized tag to one thought. False when empty/dupe/unknown. */
   addTag: (id: string, tag: string) => boolean
@@ -636,6 +645,55 @@ export const useAppStore = create<AppState>()(
     set((s) => ({ thoughts: s.thoughts.map((t) => (t.id === id ? { ...t, starred: next } : t)) }))
     return next
   },
+
+  /* ---- Phase 35: thought lifecycle — draft vs ready ---- */
+
+  setStatus: (id, status) => {
+    const target = get().thoughts.find((t) => t.id === id)
+    if (!target || target.status === 'archived') return null
+    /* Data safety: rows that already carry generated outputs are locked as
+       "ready" — flipping them to draft would hide work behind the filter. */
+    if (status === 'raw' && target.outputs.length > 0) {
+      get().pushToast('Still a draft — it has outputs', 'info')
+      return target.status
+    }
+    if (target.status === status) return status
+    const label = status === 'processed' ? 'Marked ready' : 'Moved to drafts'
+    set((s) => ({
+      thoughts: s.thoughts.map((t) => (t.id === id ? { ...t, status } : t)),
+      timeline: [
+        {
+          id: uid('ev'),
+          thoughtId: id,
+          at: Date.now(),
+          kind: 'lifecycle' as const,
+          label,
+          detail: target.text.slice(0, 80),
+        },
+        ...s.timeline,
+      ],
+    }))
+    get().pushToast(label, 'success', {
+      label: 'Undo',
+      run: () => {
+        const cur = get().thoughts.find((t) => t.id === id)
+        if (!cur || cur.status === target.status) return
+        set((s) => ({
+          thoughts: s.thoughts.map((t) => (t.id === id ? { ...t, status: target.status } : t)),
+        }))
+        get().pushToast('Reverted', 'info')
+      },
+    })
+    return status
+  },
+
+  toggleStatus: (id) => {
+    const target = get().thoughts.find((t) => t.id === id)
+    if (!target || target.status === 'archived') return null
+    return get().setStatus(id, target.status === 'raw' ? 'processed' : 'raw')
+  },
+
+  countByStatus: (status) => get().thoughts.filter((t) => t.status === status).length,
 
   /* ---- Phase 23: tags — user-editable labels for inbox filtering ---- */
 
