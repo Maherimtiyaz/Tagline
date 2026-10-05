@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Keyboard, Moon, RotateCcw, Sun } from 'lucide-react'
-import { useAppStore } from '../../lib/store'
+import { useAppStore, pullRemoteState } from '../../lib/store'
 import { useThemeStore, type Theme } from '../../lib/theme'
 import { SegmentedControl } from '../../components/ui/SegmentedControl'
 import { Kbd } from '../../components/ui/Kbd'
@@ -91,6 +91,22 @@ export function SettingsPage({ inApp = true }: { inApp?: boolean }) {
             <p className="mb-3 text-xs text-ink-muted">
               Restores the original thoughts, outputs and history. Your experiments disappear.
             </p>
+            {/* Phase 31: cross-tab sync status + manual resync escape hatch. */}
+            <div className="mb-4 flex items-center justify-between gap-3 rounded-lg bg-surface-2 px-3 py-2">
+              <div>
+                <p className="text-xs font-medium">Open in other tabs?</p>
+                <p className="text-3xs text-ink-subtle">
+                  Changes sync automatically across this browser's tabs.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { pullRemoteState(); pushToast('Synced with latest saved data', 'info') }}
+                className="shrink-0 rounded-md border border-line px-2.5 py-1 text-3xs font-medium text-ink transition-colors hover:border-accent hover:text-accent focus-visible:ring-2 focus-visible:ring-accent/40"
+              >
+                Sync now
+              </button>
+            </div>
             {confirming ? (
               <div className="flex gap-2">
                 <button

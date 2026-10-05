@@ -106,6 +106,49 @@ const TOAST_MS = 2600
 /** Undo-actionable toasts linger longer so the button is reachable. */
 const TOAST_ACTION_MS = 6000
 
+/* ---- Phase 31: cross-tab sync -------------------------------------------
+   The persisted store already shares one localStorage key, but a second
+   browser tab never learns about the first tab's writes until reload.
+   This module broadcasts domain-data changes over BroadcastChannel when
+   available and falls back to `storage` events (which fire only in *other*
+   tabs — exactly what we need) on older engines. Transient UI state is
+   deliberately excluded: tabs keep independent palettes, toasts, drafts. */
+
+export const CROSS_TAB_CHANNEL = 'context-demo-sync-v1'
+
+type SyncMessage = { kind: 'domain'; senderId: string } | { kind: 'reset'; senderId: string }
+
+/** Per-tab identity so we can ignore our own echoes. */
+export const TAB_ID = uid('tab')
+
+let channel: BroadcastChannel | null = null
+let applyingRemote = false
+
+/** Domain slice currently applied from another tab (for storage-event dedup). */
+let lastAppliedRaw: string | null = null
+
+/** Pure read of the persisted domain payload; null when unavailable/invalid. */
+export function readPersistedDomain(): PersistedShape | null {
+  try {
+    const raw = safeStorage.getItem(STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { state?: PersistedShape }
+    return parsed && parsed.state && Array.isArray(parsed.state.thoughts) ? parsed.state : null
+  } catch {
+    return null
+  }
+}
+
+/** Apply another tab's persisted payload locally (seeds re-merged as always). */
+function applyRemoteState(remote: PersistedShape | null): void {
+  applyingRemote = true
+  try {
+    useAppStore.setState({ ...mergeWithSeeds(remote) })
+  } finally {
+    applyingRemote = false
+  }
+}
+
 /** Which inbox view the list screen renders (spec §18 sidebar). */
 export type InboxView = 'inbox' | 'workspace' | 'drafts'
 
@@ -995,11 +1038,13 @@ export const useAppStore = create<AppState>()(
 
   resetDemo: () => {
     try {
-      window.localStorage.removeItem(STORAGE_KEY)
+      safeStorage.removeItem(STORAGE_KEY)
     } catch {
       /* ignore */
     }
     set({ ...seedState(), selectedThoughtId: null, selectedIds: [], inboxView: 'inbox' as const, editHistory: {}, userCollections: [], onboardingSeen: true, demoVisits: 0 })
+    /* Phase 31: notify sibling tabs so they re-seed too. */
+    broadcastDomainChange('reset')
     get().pushToast('Demo reset to its initial state', 'info')
   },
     }),
@@ -1021,3 +1066,109 @@ export const useAppStore = create<AppState>()(
     },
   ),
 )
+
+/* ---- Phase 31 wiring ---------------------------------------------------- */
+
+/** True while we are mid-apply of a remote payload — suppresses rebroadcast. */
+
+/** Broadcast that this tab's domain data changed (no-op during remote apply). */
+export function broadcastDomainChange(kind: 'domain' | 'reset' = 'domain'): void {
+  if (applyingRemote) return
+  try {
+    channel?.postMessage({ kind, senderId: TAB_ID } satisfies SyncMessage)
+  } catch {
+    /* channel closed / serialization failure — storage-event fallback covers it */
+  }
+}
+
+/** Pull the latest persisted payload from disk into memory (manual resync). */
+export function pullRemoteState(): boolean {
+  const raw = safeStorage.getItem(STORAGE_KEY)
+  lastAppliedRaw = raw
+  applyRemoteState(readPersistedDomain())
+  return true
+}
+
+let syncStarted = false
+
+/**
+ * Start cross-tab synchronization. Idempotent; safe on the server and in
+ * Node test harnesses (both lack window — everything stays inert).
+ * Returns a cleanup function for hot-reload / unmount scenarios.
+ */
+export function startCrossTabSync(): () => void {
+  if (syncStarted) return () => undefined
+  if (typeof window === 'undefined') return () => undefined
+  syncStarted = true
+
+  /* Re-pull whenever this tab regains focus — catches up after sleep/throttle
+     without spamming updates while the user isn't looking. */
+  const onVisibility = () => {
+    if (document.visibilityState === 'visible') pullRemoteState()
+  }
+  document.addEventListener('visibilitychange', onVisibility)
+
+  /* Storage-event fallback: fires in OTHER tabs only when our key changes.
+     Dedup against payloads we applied ourselves via the channel. */
+  const onStorage = (e: StorageEvent) => {
+    if (e.key !== STORAGE_KEY) return
+    if (e.newValue === lastAppliedRaw) return
+    if (e.newValue === null) {
+      /* resetDemo cleared storage in another tab */
+      lastAppliedRaw = null
+      useAppStore.getState().resetDemo()
+      return
+    }
+    pullRemoteState()
+  }
+  window.addEventListener('storage', onStorage)
+
+  /* BroadcastChannel fast path: react to sibling-tab notifications. */
+  try {
+    if (typeof BroadcastChannel !== 'undefined') {
+      channel = new BroadcastChannel(CROSS_TAB_CHANNEL)
+      channel.onmessage = (ev: MessageEvent<Partial<SyncMessage>>) => {
+        const msg = ev.data
+        if (!msg || msg.senderId === TAB_ID) return
+        if (msg.kind === 'reset') {
+          lastAppliedRaw = null
+          useAppStore.getState().resetDemo()
+        } else if (msg.kind === 'domain') {
+          pullRemoteState()
+        }
+      }
+    }
+  } catch {
+    channel = null
+  }
+
+  /* Every local domain write notifies siblings (zustand persist already
+     wrote localStorage synchronously before subscribers run). */
+  const stopSubscribe = useAppStore.subscribe((state, prev) => {
+    if (applyingRemote) return
+    if (
+      state.thoughts !== prev.thoughts ||
+      state.timeline !== prev.timeline ||
+      state.userCollections !== prev.userCollections
+    ) {
+      broadcastDomainChange('domain')
+    }
+  })
+
+  return () => {
+    syncStarted = false
+    document.removeEventListener('visibilitychange', onVisibility)
+    window.removeEventListener('storage', onStorage)
+    stopSubscribe()
+    try {
+      channel?.close()
+    } finally {
+      channel = null
+    }
+  }
+}
+
+/* Auto-start in real browsers (module is imported once by the app entry). */
+if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+  startCrossTabSync()
+}
