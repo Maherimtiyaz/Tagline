@@ -196,3 +196,13 @@ Six defects found & fixed: dead `--duration-normal` token; missing inbox loading
 - ⚠️ Pre-existing baseline drift (unchanged by this phase, verified via git stash): P22 16/18 · P25 19/24 · P26 11/19 · P30 33/34 — stale seeded-starred assumptions from Phase 28 mock-data edits; all other suites green (P18 17 · P19 22 · P21 27 · P23 21 · P24 16 · P28 21 · P29 22)
 
 **Files touched:** `src/lib/store.ts`, `src/features/settings/SettingsPage.tsx`, `qa/phase31-crosstab.test.ts`, `PHASES_REPORT.md`
+
+### Phase 34 — Editor Autosave & Draft Recovery (extension) ✅ SHIPPED
+- New autosave layer in `src/lib/store.ts`: per-thought unsaved editor text mirrored into its own localStorage key (`context-demo-editor-drafts-v1`), deliberately OUTSIDE the persisted domain payload so drafts never cross-tab sync (Phase 31 invariant holds) and can't inflate resets. TTL 24h, newest-first cap of 50 entries, corrupt/array/field-invalid payloads dropped on read, all storage access via `safeStorage`.
+- Store actions: `saveDraft` (no-op/clear when text equals committed row), `getDraft` (returns null for absent/stale/committed/deleted rows), `clearDraft`; `updateThoughtText` auto-clears on commit; `resetDemo` wipes the draft store.
+- `ThoughtEditor` wiring: debounced (800ms) autosave on every keystroke; once-per-mount recovery check offers a dismissible banner (role=status, AnimatePresence, reduced-motion aware) with **Restore it** / discard — recovered text is never auto-applied behind the user; footer status line now reads "N chars · autosaved locally" (aria-live).
+- ✅ `qa/phase34-autosave.test.ts`: 23/23 pass (persist/read/commit-clear/equal-guard/TTL/corrupt-payload ×3/unknown-id guards/cap eviction/resetDemo wipe/domain-leak isolation)
+- ✅ Regressions unchanged from HEAD baseline (verified via git stash): P18 17/17 · P19 22/22 · P21 27/27 · P31 24/24; known drift P22 16/18 · P25 19/24 identical before and after this phase
+- ✅ Build clean (✓ 1.40s); lint 0 errors (5 pre-existing warnings); preview sweep all 8 routes → 200
+
+**Files touched:** `src/lib/store.ts`, `src/features/thoughts/ThoughtEditor.tsx`, `qa/phase34-autosave.test.ts`, `PHASES_REPORT.md`

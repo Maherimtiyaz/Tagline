@@ -1,9 +1,9 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowLeft, Check, ChevronRight, Loader2, Mic, Wand2, X } from 'lucide-react'
+import { ArrowLeft, Check, ChevronRight, Loader2, Mic, RotateCcw, Wand2, X } from 'lucide-react'
 import type { OutputType } from '../../data/types'
 import { TEMPLATES } from '../../data/mock'
-import { useAppStore } from '../../lib/store'
+import { useAppStore, type EditorDraft } from '../../lib/store'
 import { analyzeThought } from '../../lib/mockAI'
 import { OUTPUT_TYPES, STAGE_COPY, STAGE_ORDER } from '../../lib/outputMeta'
 import { useTransformPipeline } from '../../hooks/useTransformPipeline'
@@ -36,6 +36,48 @@ export function ThoughtEditor({ thoughtId, onClose, initialType }: { thoughtId: 
   /* Local draft of the thought text — store only commits on blur /
      transform so typing stays smooth and undoable by the browser. */
   const [draft, setDraft] = useState(thought?.text ?? '')
+  /* Phase 34: autosave + recovery banner. A persisted autosave that
+     differs from the committed row is offered (never auto-applied). */
+  const saveDraft = useAppStore((s) => s.saveDraft)
+  const clearDraftKey = useAppStore((s) => s.clearDraft)
+  const getDraft = useAppStore((s) => s.getDraft)
+  const pushToast = useAppStore((s) => s.pushToast)
+  const [recovery, setRecovery] = useState<EditorDraft | null>(null)
+  const autosaveTimer = useRef<number | undefined>(undefined)
+
+  /* Offer recovery once per mount (before any keystroke overwrites it). */
+  useEffect(() => {
+    const stored = getDraft(thoughtId)
+    if (stored && stored.text !== (thought?.text ?? '')) setRecovery(stored)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  /* Debounced autosave: mirror unsaved text 800ms after typing stops. */
+  useEffect(() => {
+    window.clearTimeout(autosaveTimer.current)
+    autosaveTimer.current = window.setTimeout(() => saveDraft(thoughtId, draft), 800)
+    return () => window.clearTimeout(autosaveTimer.current)
+  }, [draft, thoughtId, saveDraft])
+
+  /* When the draft matches the committed row there is nothing to recover. */
+  useEffect(() => {
+    if (recovery && recovery.text === thought?.text) setRecovery(null)
+  }, [recovery, thought])
+
+  const applyRecovery = () => {
+    if (!recovery) return
+    setDraft(recovery.text)
+    commitDraft(recovery.text)
+    setRecovery(null)
+    pushToast('Recovered your last edit', 'success')
+  }
+
+  const discardRecovery = () => {
+    if (!recovery) return
+    clearDraftKey(thoughtId)
+    setRecovery(null)
+  }
+
   const [slash, setSlash] = useState<string | null>(null)
   const [slashIdx, setSlashIdx] = useState(0)
 
@@ -50,6 +92,8 @@ export function ThoughtEditor({ thoughtId, onClose, initialType }: { thoughtId: 
 
   const commitDraft = (value: string) => {
     if (value !== thought?.text) updateText(thoughtId, value)
+    /* Phase 34: the store row now matches the editor — autosave is moot. */
+    clearDraftKey(thoughtId)
   }
 
   const result = useMemo(() => (draft.trim() ? analyzeThought(draft) : null), [draft])
@@ -222,6 +266,45 @@ export function ThoughtEditor({ thoughtId, onClose, initialType }: { thoughtId: 
               </form>
             ) : (
             <>
+            {/* Phase 34: draft-recovery banner — offered, never auto-applied. */}
+            <AnimatePresence>
+              {recovery && (
+                <motion.div
+                  initial={reduced ? false : { opacity: 0, y: -6, height: 0 }}
+                  animate={{ opacity: 1, y: 0, height: 'auto' }}
+                  exit={{ opacity: 0, y: -6, height: 0 }}
+                  transition={{ duration: 0.25 }}
+                  className="overflow-hidden"
+                  role="status"
+                >
+                  <div className="mb-3 flex items-center gap-3 rounded-xl border border-accent-line bg-accent-soft px-3 py-2.5">
+                    <RotateCcw size={14} className="shrink-0 text-accent" aria-hidden />
+                    <p className="min-w-0 flex-1 truncate text-xs text-ink">
+                      Unsaved edit from{' '}
+                      <span className="font-mono text-2xs text-ink-subtle">
+                        {new Date(recovery.savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>{' '}
+                      was recovered after a refresh.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={applyRecovery}
+                      className="shrink-0 rounded-md bg-accent px-2.5 py-1 text-2xs font-medium text-canvas transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-accent"
+                    >
+                      Restore it
+                    </button>
+                    <button
+                      type="button"
+                      onClick={discardRecovery}
+                      aria-label="Discard recovered draft"
+                      className="shrink-0 rounded-md p-1 text-ink-subtle transition-colors hover:bg-surface-hover hover:text-ink focus-visible:ring-2 focus-visible:ring-accent"
+                    >
+                      <X size={14} aria-hidden />
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
             <div>
               <label htmlFor="thought-input" className="label-mono mb-2 block">Your thought</label>
               {/* Slash-command menu (spec §31): opens when a line starts with "/" */}
@@ -277,7 +360,9 @@ export function ThoughtEditor({ thoughtId, onClose, initialType }: { thoughtId: 
                 />
               </div>
               <div className="mt-1.5 flex items-center justify-between">
-                <p className="font-mono text-3xs text-ink-faint">{draft.length} chars</p>
+                <p className="font-mono text-3xs text-ink-faint" aria-live="polite">
+                  {draft.length} chars · autosaved locally
+                </p>
                 <button
                   type="button"
                   onClick={() => setVoiceOpen((v) => !v)}

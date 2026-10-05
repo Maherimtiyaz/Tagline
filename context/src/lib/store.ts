@@ -181,6 +181,62 @@ const archiveOnto = (o: GeneratedOutput, v: OutputVersion): GeneratedOutput => (
   versions: [v, ...(o.versions ?? [])].slice(0, MAX_VERSIONS),
 })
 
+/* ---- Phase 34: editor autosave & draft recovery ------------------------
+   The thought editor keeps typing in component state and only commits to
+   the store on blur / transform — so a refresh or tab crash between edits
+   silently loses work. Autosave mirrors every keystroke (debounced by the
+   editor) into its own small localStorage key; on the next open the stored
+   text is offered as a recoverable draft instead of being applied behind
+   the user's back. Kept OUT of the main persisted domain payload (partialize
+   below) so it never syncs across tabs or inflates demo resets. */
+
+const DRAFT_KEY = 'context-demo-editor-drafts-v1'
+/** Autosaves older than this are considered stale and dropped. */
+export const DRAFT_TTL_MS = 24 * 60 * 60 * 1000
+/** Soft cap so abandoned drafts can't grow storage unbounded. */
+export const MAX_DRAFTS = 50
+
+export interface EditorDraft {
+  text: string
+  savedAt: number
+}
+
+type DraftMap = Record<string, EditorDraft>
+
+function readDrafts(): DraftMap {
+  try {
+    const raw = safeStorage.getItem(DRAFT_KEY)
+    if (!raw) return {}
+    const parsed: unknown = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    const cutoff = Date.now() - DRAFT_TTL_MS
+    const out: DraftMap = {}
+    for (const [id, v] of Object.entries(parsed as Record<string, unknown>)) {
+      const d = v as Partial<EditorDraft> | null
+      if (d && typeof d.text === 'string' && typeof d.savedAt === 'number' && d.savedAt >= cutoff) {
+        out[id] = { text: d.text, savedAt: d.savedAt }
+      }
+    }
+    return out
+  } catch {
+    return {}
+  }
+}
+
+function writeDrafts(map: DraftMap): void {
+  try {
+    /* Cap: keep the newest MAX_DRAFTS entries by savedAt. */
+    const entries = Object.entries(map)
+    const kept =
+      entries.length <= MAX_DRAFTS
+        ? entries
+        : entries.sort((a, b) => b[1].savedAt - a[1].savedAt).slice(0, MAX_DRAFTS)
+    safeStorage.setItem(DRAFT_KEY, JSON.stringify(Object.fromEntries(kept)))
+  } catch {
+    /* quota / private mode — autosave degrades silently, app still works */
+  }
+}
+
 interface AppState {
   thoughts: Thought[]
   timeline: TimelineEvent[]
@@ -280,6 +336,14 @@ interface AppState {
   rateOutput: (thoughtId: string, outputId: string, rating: 'helpful' | 'needs-work') => boolean
   /** Phase 29 — remove any feedback from an output. */
   clearFeedback: (thoughtId: string, outputId: string) => boolean
+
+  /* ---- Phase 34: editor autosave & draft recovery ---- */
+  /** Debounced mirror of unsaved editor text into localStorage. */
+  saveDraft: (thoughtId: string, text: string) => void
+  /** Read a still-unsaved autosave (null when absent/stale/committed). */
+  getDraft: (thoughtId: string) => EditorDraft | null
+  /** Drop one autosave (after commit, explicit discard, or restore). */
+  clearDraft: (thoughtId: string) => void
 
   setSearchQuery: (q: string) => void
 
@@ -481,12 +545,46 @@ export const useAppStore = create<AppState>()(
     return id
   },
 
-  updateThoughtText: (id, text) =>
+  updateThoughtText: (id, text) => {
+    /* Phase 34: committing the store row makes any autosave redundant. */
     set((s) => ({
       thoughts: s.thoughts.map((t) =>
         t.id === id ? { ...t, text, understanding: undefined, status: 'raw' as const } : t,
       ),
-    })),
+    }))
+    get().clearDraft(id)
+  },
+
+  /* ---- Phase 34: editor autosave & draft recovery ---- */
+
+  saveDraft: (thoughtId, text) => {
+    const thought = get().thoughts.find((t) => t.id === thoughtId)
+    if (!thought) return
+    /* Nothing to recover while it matches the committed row. */
+    if (text === thought.text) {
+      get().clearDraft(thoughtId)
+      return
+    }
+    const map = readDrafts()
+    map[thoughtId] = { text, savedAt: Date.now() }
+    writeDrafts(map)
+  },
+
+  getDraft: (thoughtId) => {
+    const draft = readDrafts()[thoughtId]
+    if (!draft) return null
+    const thought = get().thoughts.find((t) => t.id === thoughtId)
+    /* Committed or deleted meanwhile — the autosave is stale. */
+    if (!thought || thought.text === draft.text) return null
+    return draft
+  },
+
+  clearDraft: (thoughtId) => {
+    const map = readDrafts()
+    if (!(thoughtId in map)) return
+    delete map[thoughtId]
+    writeDrafts(map)
+  },
 
   archiveThought: (id) => {
     /* Phase 21: single archive gets an Undo restoring the prior status. */
@@ -1043,6 +1141,8 @@ export const useAppStore = create<AppState>()(
       /* ignore */
     }
     set({ ...seedState(), selectedThoughtId: null, selectedIds: [], inboxView: 'inbox' as const, editHistory: {}, userCollections: [], onboardingSeen: true, demoVisits: 0 })
+    /* Phase 34: abandoned autosave drafts belong to rows that no longer exist. */
+    safeStorage.removeItem(DRAFT_KEY)
     /* Phase 31: notify sibling tabs so they re-seed too. */
     broadcastDomainChange('reset')
     get().pushToast('Demo reset to its initial state', 'info')
