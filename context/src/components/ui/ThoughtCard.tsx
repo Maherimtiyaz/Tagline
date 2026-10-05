@@ -57,6 +57,9 @@ export function ThoughtCard({
   const archive = useAppStore((s) => s.archiveThought)
   const togglePin = useAppStore((s) => s.togglePin)
   const toggleStar = useAppStore((s) => s.toggleStar)
+  /* Phase 35 — draft ↔ ready lifecycle (store guards archived rows and
+     rows that already carry outputs). */
+  const setStatus = useAppStore((s) => s.setStatus)
   const preview = useMemo(() => (text.length > 150 ? text.slice(0, 150) + '…' : text), [text])
   const suggestion = useMemo(() => (text.trim() ? analyzeThought(text).suggestions[0] : null), [text])
 
@@ -173,6 +176,18 @@ export function ThoughtCard({
             className="rounded-md bg-accent px-2 py-1 text-2xs font-medium text-accent-ink transition-colors hover:bg-accent-hover"
           >
             Transform
+          </button>
+        )}
+        {/* Phase 35: lifecycle toggle — raw drafts can be marked ready so
+            they leave the Inbox queue without needing an output yet. */}
+        {status === 'raw' && text.trim() && (
+          <button
+            type="button"
+            onClick={() => setStatus(id, 'processed')}
+            className="rounded-md border border-line bg-surface px-2 py-1 text-2xs text-ink-muted transition-colors hover:border-emerald hover:text-emerald"
+            aria-label="Mark thought as ready"
+          >
+            Mark ready
           </button>
         )}
         {onDelete ? (

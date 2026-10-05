@@ -106,6 +106,49 @@ const TOAST_MS = 2600
 /** Undo-actionable toasts linger longer so the button is reachable. */
 const TOAST_ACTION_MS = 6000
 
+/* ---- Phase 31: cross-tab sync -------------------------------------------
+   The persisted store already shares one localStorage key, but a second
+   browser tab never learns about the first tab's writes until reload.
+   This module broadcasts domain-data changes over BroadcastChannel when
+   available and falls back to `storage` events (which fire only in *other*
+   tabs — exactly what we need) on older engines. Transient UI state is
+   deliberately excluded: tabs keep independent palettes, toasts, drafts. */
+
+export const CROSS_TAB_CHANNEL = 'context-demo-sync-v1'
+
+type SyncMessage = { kind: 'domain'; senderId: string } | { kind: 'reset'; senderId: string }
+
+/** Per-tab identity so we can ignore our own echoes. */
+export const TAB_ID = uid('tab')
+
+let channel: BroadcastChannel | null = null
+let applyingRemote = false
+
+/** Domain slice currently applied from another tab (for storage-event dedup). */
+let lastAppliedRaw: string | null = null
+
+/** Pure read of the persisted domain payload; null when unavailable/invalid. */
+export function readPersistedDomain(): PersistedShape | null {
+  try {
+    const raw = safeStorage.getItem(STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { state?: PersistedShape }
+    return parsed && parsed.state && Array.isArray(parsed.state.thoughts) ? parsed.state : null
+  } catch {
+    return null
+  }
+}
+
+/** Apply another tab's persisted payload locally (seeds re-merged as always). */
+function applyRemoteState(remote: PersistedShape | null): void {
+  applyingRemote = true
+  try {
+    useAppStore.setState({ ...mergeWithSeeds(remote) })
+  } finally {
+    applyingRemote = false
+  }
+}
+
 /** Which inbox view the list screen renders (spec §18 sidebar). */
 export type InboxView = 'inbox' | 'workspace' | 'drafts'
 
@@ -137,6 +180,62 @@ const archiveOnto = (o: GeneratedOutput, v: OutputVersion): GeneratedOutput => (
   ...o,
   versions: [v, ...(o.versions ?? [])].slice(0, MAX_VERSIONS),
 })
+
+/* ---- Phase 34: editor autosave & draft recovery ------------------------
+   The thought editor keeps typing in component state and only commits to
+   the store on blur / transform — so a refresh or tab crash between edits
+   silently loses work. Autosave mirrors every keystroke (debounced by the
+   editor) into its own small localStorage key; on the next open the stored
+   text is offered as a recoverable draft instead of being applied behind
+   the user's back. Kept OUT of the main persisted domain payload (partialize
+   below) so it never syncs across tabs or inflates demo resets. */
+
+const DRAFT_KEY = 'context-demo-editor-drafts-v1'
+/** Autosaves older than this are considered stale and dropped. */
+export const DRAFT_TTL_MS = 24 * 60 * 60 * 1000
+/** Soft cap so abandoned drafts can't grow storage unbounded. */
+export const MAX_DRAFTS = 50
+
+export interface EditorDraft {
+  text: string
+  savedAt: number
+}
+
+type DraftMap = Record<string, EditorDraft>
+
+function readDrafts(): DraftMap {
+  try {
+    const raw = safeStorage.getItem(DRAFT_KEY)
+    if (!raw) return {}
+    const parsed: unknown = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    const cutoff = Date.now() - DRAFT_TTL_MS
+    const out: DraftMap = {}
+    for (const [id, v] of Object.entries(parsed as Record<string, unknown>)) {
+      const d = v as Partial<EditorDraft> | null
+      if (d && typeof d.text === 'string' && typeof d.savedAt === 'number' && d.savedAt >= cutoff) {
+        out[id] = { text: d.text, savedAt: d.savedAt }
+      }
+    }
+    return out
+  } catch {
+    return {}
+  }
+}
+
+function writeDrafts(map: DraftMap): void {
+  try {
+    /* Cap: keep the newest MAX_DRAFTS entries by savedAt. */
+    const entries = Object.entries(map)
+    const kept =
+      entries.length <= MAX_DRAFTS
+        ? entries
+        : entries.sort((a, b) => b[1].savedAt - a[1].savedAt).slice(0, MAX_DRAFTS)
+    safeStorage.setItem(DRAFT_KEY, JSON.stringify(Object.fromEntries(kept)))
+  } catch {
+    /* quota / private mode — autosave degrades silently, app still works */
+  }
+}
 
 interface AppState {
   thoughts: Thought[]
@@ -175,6 +274,15 @@ interface AppState {
   togglePin: (id: string) => boolean
   /** Phase 25 — star/unstar; starred rows sort above pinned rows. */
   toggleStar: (id: string) => boolean
+
+  /* ---- Phase 35: thought lifecycle — draft vs ready ---- */
+  /** Flip raw ↔ processed. Returns the new status, or null for unknown ids.
+   *  Rows that already carry outputs are locked as "ready" (data safety). */
+  setStatus: (id: string, status: Extract<ThoughtStatus, 'raw' | 'processed'>) => ThoughtStatus | null
+  /** Convenience toggle used by card shortcuts / palette actions. */
+  toggleStatus: (id: string) => ThoughtStatus | null
+  /** Count thoughts in a given status (used by tests + Insights chips). */
+  countByStatus: (status: ThoughtStatus) => number
 
   /* ---- Phase 23: tags — user-editable labels for inbox filtering ---- */
   /** Add a normalized tag to one thought. False when empty/dupe/unknown. */
@@ -237,6 +345,14 @@ interface AppState {
   rateOutput: (thoughtId: string, outputId: string, rating: 'helpful' | 'needs-work') => boolean
   /** Phase 29 — remove any feedback from an output. */
   clearFeedback: (thoughtId: string, outputId: string) => boolean
+
+  /* ---- Phase 34: editor autosave & draft recovery ---- */
+  /** Debounced mirror of unsaved editor text into localStorage. */
+  saveDraft: (thoughtId: string, text: string) => void
+  /** Read a still-unsaved autosave (null when absent/stale/committed). */
+  getDraft: (thoughtId: string) => EditorDraft | null
+  /** Drop one autosave (after commit, explicit discard, or restore). */
+  clearDraft: (thoughtId: string) => void
 
   setSearchQuery: (q: string) => void
 
@@ -438,12 +554,46 @@ export const useAppStore = create<AppState>()(
     return id
   },
 
-  updateThoughtText: (id, text) =>
+  updateThoughtText: (id, text) => {
+    /* Phase 34: committing the store row makes any autosave redundant. */
     set((s) => ({
       thoughts: s.thoughts.map((t) =>
         t.id === id ? { ...t, text, understanding: undefined, status: 'raw' as const } : t,
       ),
-    })),
+    }))
+    get().clearDraft(id)
+  },
+
+  /* ---- Phase 34: editor autosave & draft recovery ---- */
+
+  saveDraft: (thoughtId, text) => {
+    const thought = get().thoughts.find((t) => t.id === thoughtId)
+    if (!thought) return
+    /* Nothing to recover while it matches the committed row. */
+    if (text === thought.text) {
+      get().clearDraft(thoughtId)
+      return
+    }
+    const map = readDrafts()
+    map[thoughtId] = { text, savedAt: Date.now() }
+    writeDrafts(map)
+  },
+
+  getDraft: (thoughtId) => {
+    const draft = readDrafts()[thoughtId]
+    if (!draft) return null
+    const thought = get().thoughts.find((t) => t.id === thoughtId)
+    /* Committed or deleted meanwhile — the autosave is stale. */
+    if (!thought || thought.text === draft.text) return null
+    return draft
+  },
+
+  clearDraft: (thoughtId) => {
+    const map = readDrafts()
+    if (!(thoughtId in map)) return
+    delete map[thoughtId]
+    writeDrafts(map)
+  },
 
   archiveThought: (id) => {
     /* Phase 21: single archive gets an Undo restoring the prior status. */
@@ -495,6 +645,55 @@ export const useAppStore = create<AppState>()(
     set((s) => ({ thoughts: s.thoughts.map((t) => (t.id === id ? { ...t, starred: next } : t)) }))
     return next
   },
+
+  /* ---- Phase 35: thought lifecycle — draft vs ready ---- */
+
+  setStatus: (id, status) => {
+    const target = get().thoughts.find((t) => t.id === id)
+    if (!target || target.status === 'archived') return null
+    /* Data safety: rows that already carry generated outputs are locked as
+       "ready" — flipping them to draft would hide work behind the filter. */
+    if (status === 'raw' && target.outputs.length > 0) {
+      get().pushToast('Still a draft — it has outputs', 'info')
+      return target.status
+    }
+    if (target.status === status) return status
+    const label = status === 'processed' ? 'Marked ready' : 'Moved to drafts'
+    set((s) => ({
+      thoughts: s.thoughts.map((t) => (t.id === id ? { ...t, status } : t)),
+      timeline: [
+        {
+          id: uid('ev'),
+          thoughtId: id,
+          at: Date.now(),
+          kind: 'lifecycle' as const,
+          label,
+          detail: target.text.slice(0, 80),
+        },
+        ...s.timeline,
+      ],
+    }))
+    get().pushToast(label, 'success', {
+      label: 'Undo',
+      run: () => {
+        const cur = get().thoughts.find((t) => t.id === id)
+        if (!cur || cur.status === target.status) return
+        set((s) => ({
+          thoughts: s.thoughts.map((t) => (t.id === id ? { ...t, status: target.status } : t)),
+        }))
+        get().pushToast('Reverted', 'info')
+      },
+    })
+    return status
+  },
+
+  toggleStatus: (id) => {
+    const target = get().thoughts.find((t) => t.id === id)
+    if (!target || target.status === 'archived') return null
+    return get().setStatus(id, target.status === 'raw' ? 'processed' : 'raw')
+  },
+
+  countByStatus: (status) => get().thoughts.filter((t) => t.status === status).length,
 
   /* ---- Phase 23: tags — user-editable labels for inbox filtering ---- */
 
@@ -995,11 +1194,15 @@ export const useAppStore = create<AppState>()(
 
   resetDemo: () => {
     try {
-      window.localStorage.removeItem(STORAGE_KEY)
+      safeStorage.removeItem(STORAGE_KEY)
     } catch {
       /* ignore */
     }
     set({ ...seedState(), selectedThoughtId: null, selectedIds: [], inboxView: 'inbox' as const, editHistory: {}, userCollections: [], onboardingSeen: true, demoVisits: 0 })
+    /* Phase 34: abandoned autosave drafts belong to rows that no longer exist. */
+    safeStorage.removeItem(DRAFT_KEY)
+    /* Phase 31: notify sibling tabs so they re-seed too. */
+    broadcastDomainChange('reset')
     get().pushToast('Demo reset to its initial state', 'info')
   },
     }),
@@ -1021,3 +1224,109 @@ export const useAppStore = create<AppState>()(
     },
   ),
 )
+
+/* ---- Phase 31 wiring ---------------------------------------------------- */
+
+/** True while we are mid-apply of a remote payload — suppresses rebroadcast. */
+
+/** Broadcast that this tab's domain data changed (no-op during remote apply). */
+export function broadcastDomainChange(kind: 'domain' | 'reset' = 'domain'): void {
+  if (applyingRemote) return
+  try {
+    channel?.postMessage({ kind, senderId: TAB_ID } satisfies SyncMessage)
+  } catch {
+    /* channel closed / serialization failure — storage-event fallback covers it */
+  }
+}
+
+/** Pull the latest persisted payload from disk into memory (manual resync). */
+export function pullRemoteState(): boolean {
+  const raw = safeStorage.getItem(STORAGE_KEY)
+  lastAppliedRaw = raw
+  applyRemoteState(readPersistedDomain())
+  return true
+}
+
+let syncStarted = false
+
+/**
+ * Start cross-tab synchronization. Idempotent; safe on the server and in
+ * Node test harnesses (both lack window — everything stays inert).
+ * Returns a cleanup function for hot-reload / unmount scenarios.
+ */
+export function startCrossTabSync(): () => void {
+  if (syncStarted) return () => undefined
+  if (typeof window === 'undefined') return () => undefined
+  syncStarted = true
+
+  /* Re-pull whenever this tab regains focus — catches up after sleep/throttle
+     without spamming updates while the user isn't looking. */
+  const onVisibility = () => {
+    if (document.visibilityState === 'visible') pullRemoteState()
+  }
+  document.addEventListener('visibilitychange', onVisibility)
+
+  /* Storage-event fallback: fires in OTHER tabs only when our key changes.
+     Dedup against payloads we applied ourselves via the channel. */
+  const onStorage = (e: StorageEvent) => {
+    if (e.key !== STORAGE_KEY) return
+    if (e.newValue === lastAppliedRaw) return
+    if (e.newValue === null) {
+      /* resetDemo cleared storage in another tab */
+      lastAppliedRaw = null
+      useAppStore.getState().resetDemo()
+      return
+    }
+    pullRemoteState()
+  }
+  window.addEventListener('storage', onStorage)
+
+  /* BroadcastChannel fast path: react to sibling-tab notifications. */
+  try {
+    if (typeof BroadcastChannel !== 'undefined') {
+      channel = new BroadcastChannel(CROSS_TAB_CHANNEL)
+      channel.onmessage = (ev: MessageEvent<Partial<SyncMessage>>) => {
+        const msg = ev.data
+        if (!msg || msg.senderId === TAB_ID) return
+        if (msg.kind === 'reset') {
+          lastAppliedRaw = null
+          useAppStore.getState().resetDemo()
+        } else if (msg.kind === 'domain') {
+          pullRemoteState()
+        }
+      }
+    }
+  } catch {
+    channel = null
+  }
+
+  /* Every local domain write notifies siblings (zustand persist already
+     wrote localStorage synchronously before subscribers run). */
+  const stopSubscribe = useAppStore.subscribe((state, prev) => {
+    if (applyingRemote) return
+    if (
+      state.thoughts !== prev.thoughts ||
+      state.timeline !== prev.timeline ||
+      state.userCollections !== prev.userCollections
+    ) {
+      broadcastDomainChange('domain')
+    }
+  })
+
+  return () => {
+    syncStarted = false
+    document.removeEventListener('visibilitychange', onVisibility)
+    window.removeEventListener('storage', onStorage)
+    stopSubscribe()
+    try {
+      channel?.close()
+    } finally {
+      channel = null
+    }
+  }
+}
+
+/* Auto-start in real browsers (module is imported once by the app entry). */
+if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+  startCrossTabSync()
+}

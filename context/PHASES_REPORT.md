@@ -183,3 +183,26 @@ Six defects found & fixed: dead `--duration-normal` token; missing inbox loading
 - ✅ Build clean (✓ 4.03s); lint 0 errors (5 pre-existing warnings); all 8 routes return 200
 
 **Files touched:** `src/components/layout/AppShell.tsx`, `src/features/workspace/InboxPage.tsx`, `qa/phase26-sidebar.test.ts`, `PHASES_REPORT.md`
+
+### Phase 31 — Cross-Tab Sync (extension) ✅ SHIPPED
+- New sync layer in `src/lib/store.ts`: BroadcastChannel (`context-demo-sync-v1`) fast path with a `storage`-event fallback for older engines; per-tab `TAB_ID` echo suppression; re-pull on `visibilitychange` so background tabs catch up on focus.
+- Domain-only propagation: `thoughts` / `timeline` / `userCollections` (+ `onboardingSeen`, `demoVisits` via the persisted envelope). Transient UI state (toasts, palette, selection, drafts, edit journal) deliberately never crosses tabs — verified by harness.
+- Remote payloads flow through the existing seed-re-merge (`mergeWithSeeds`), so deleted seeds come back and id collisions let seeds win — demo can never be bricked from another tab.
+- Corrupted/invalid storage payloads degrade to `null` (no apply); missing BroadcastChannel or localStorage is inert-safe (Node/SSR/tests unaffected; auto-start guarded by `typeof window`).
+- `resetDemo` now broadcasts a `reset` message (and null-storage events) so sibling tabs re-seed instantly; Settings gained an "Open in other tabs?" row with a manual **Sync now** button (`pullRemoteState()` + info toast).
+- Fixed latent Node crash: `resetDemo` used raw `window.localStorage` — now goes through `safeStorage`.
+- ✅ `qa/phase31-crosstab.test.ts`: 24/24 pass (envelope shape, reader validation ×3 corrupt cases, remote thought/collection/timeline/counter apply, seed restore + collision merge, transient isolation, inert-without-window, reset semantics)
+- ✅ Build clean (✓ 1.53s); lint 0 errors (5 pre-existing warnings); preview serves 200
+- ⚠️ Pre-existing baseline drift (unchanged by this phase, verified via git stash): P22 16/18 · P25 19/24 · P26 11/19 · P30 33/34 — stale seeded-starred assumptions from Phase 28 mock-data edits; all other suites green (P18 17 · P19 22 · P21 27 · P23 21 · P24 16 · P28 21 · P29 22)
+
+**Files touched:** `src/lib/store.ts`, `src/features/settings/SettingsPage.tsx`, `qa/phase31-crosstab.test.ts`, `PHASES_REPORT.md`
+
+### Phase 34 — Editor Autosave & Draft Recovery (extension) ✅ SHIPPED
+- New autosave layer in `src/lib/store.ts`: per-thought unsaved editor text mirrored into its own localStorage key (`context-demo-editor-drafts-v1`), deliberately OUTSIDE the persisted domain payload so drafts never cross-tab sync (Phase 31 invariant holds) and can't inflate resets. TTL 24h, newest-first cap of 50 entries, corrupt/array/field-invalid payloads dropped on read, all storage access via `safeStorage`.
+- Store actions: `saveDraft` (no-op/clear when text equals committed row), `getDraft` (returns null for absent/stale/committed/deleted rows), `clearDraft`; `updateThoughtText` auto-clears on commit; `resetDemo` wipes the draft store.
+- `ThoughtEditor` wiring: debounced (800ms) autosave on every keystroke; once-per-mount recovery check offers a dismissible banner (role=status, AnimatePresence, reduced-motion aware) with **Restore it** / discard — recovered text is never auto-applied behind the user; footer status line now reads "N chars · autosaved locally" (aria-live).
+- ✅ `qa/phase34-autosave.test.ts`: 23/23 pass (persist/read/commit-clear/equal-guard/TTL/corrupt-payload ×3/unknown-id guards/cap eviction/resetDemo wipe/domain-leak isolation)
+- ✅ Regressions unchanged from HEAD baseline (verified via git stash): P18 17/17 · P19 22/22 · P21 27/27 · P31 24/24; known drift P22 16/18 · P25 19/24 identical before and after this phase
+- ✅ Build clean (✓ 1.40s); lint 0 errors (5 pre-existing warnings); preview sweep all 8 routes → 200
+
+**Files touched:** `src/lib/store.ts`, `src/features/thoughts/ThoughtEditor.tsx`, `qa/phase34-autosave.test.ts`, `PHASES_REPORT.md`
