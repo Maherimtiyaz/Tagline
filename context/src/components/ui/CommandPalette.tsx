@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import {
   Archive,
+  BarChart3,
   FileText,
   FolderPlus,
   Hash,
@@ -110,6 +111,13 @@ export function CommandPalette({ onNavigate }: { onNavigate?: (path: string) => 
       icon: <Archive size={15} />,
       group: 'Navigate',
       run: () => onNavigate?.('/app/history'),
+    },
+    {
+      id: 'insights',
+      label: 'Open insights',
+      icon: <BarChart3 size={15} />,
+      group: 'Navigate',
+      run: () => onNavigate?.('/app/insights'),
     },
     {
       id: 'templates',

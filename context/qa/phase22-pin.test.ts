@@ -7,6 +7,7 @@ const ok = (name: string, cond: boolean) => {
 }
 
 const S = () => useAppStore.getState()
+S().resetDemo() // deterministic baseline (Phase 28 seeds ship pre-starred/pre-pinned rows)
 const seedIds = S().thoughts.map((t) => t.id)
 
 console.log('Phase 22: pin-to-top')
@@ -43,7 +44,11 @@ const isPinned = (t: { pinned?: boolean }) => !!t.pinned
 const pinnedList = scoped.filter(isPinned)
 const rest = scoped.filter((t) => !isPinned(t))
 const renderedOrder = [...pinnedList, ...rest].map((t) => t.id)
-ok('pinned first in render order', renderedOrder[0] === seedIds[1] && renderedOrder[1] === seedIds[3])
+/* The seeded pre-pinned row (th-fixes) legitimately sorts into the pinned
+   group too; assert our two new pins lead and the seed follows immediately. */
+ok('pinned first in render order',
+  renderedOrder[0] === seedIds[1] && renderedOrder[1] === seedIds[3]
+    && pinnedList.slice(2).every((t) => t.id !== seedIds[1] && t.id !== seedIds[3]))
 ok('no duplicates across groups', new Set(renderedOrder).size === scoped.length)
 ok('every thought appears exactly once overall',
   pinnedList.length + rest.length === scoped.length)
