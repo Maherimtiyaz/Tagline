@@ -10,6 +10,11 @@ const S = () => useAppStore.getState()
 console.log('Phase 25: star & priority sort')
 
 S().resetDemo()
+/* Phase 28 seeds ship curated flags (th-launch starred, th-fixes pinned), so
+   every assertion below is DELTA-based against the seeded baseline. */
+let starBase = 0
+
+starBase = S().thoughts.filter((t) => t.starred).length
 const seedIds = S().thoughts.map((t) => t.id)
 
 // 1. toggleStar flips flag and returns new state
@@ -18,16 +23,17 @@ ok('flag persisted on thought row', S().thoughts.find((t) => t.id === seedIds[0]
 ok('second call unstars → returns false', S().toggleStar(seedIds[0]) === false)
 ok('unstar clears flag', S().thoughts.find((t) => t.id === seedIds[0])?.starred === false)
 
-// 2. unknown id guard
+// 2. unknown id guard (seeded flags make absolute counts meaningless — compare to baseline)
 ok('unknown id returns false', S().toggleStar('nope-123') === false)
-ok('unknown id leaves thoughts untouched', S().thoughts.every((t) => !t.starred))
+ok('unknown id leaves thoughts untouched', S().thoughts.filter((t) => t.starred).length === starBase)
 
 // 3. starring does not mutate other rows / statuses / pins
 const before = JSON.stringify(S().thoughts.map((t) => [t.id, t.status, t.text, !!t.pinned]))
 S().toggleStar(seedIds[1])
 const after = JSON.stringify(S().thoughts.map((t) => [t.id, t.status, t.text, !!t.pinned]))
 ok('other fields unchanged by star', before === after)
-ok('only target starred', S().thoughts.filter((t) => t.starred).map((t) => t.id).join() === seedIds[1])
+ok('only target starred', S().thoughts.filter((t) => t.starred).length === starBase + 1
+  && S().thoughts.find((t) => t.id === seedIds[1])?.starred === true)
 
 // 4. star and pin are independent flags
 S().togglePin(seedIds[1])
@@ -41,9 +47,9 @@ S().togglePin(seedIds[1])
   ok('unpin leaves star intact', S().thoughts.find((x) => x.id === seedIds[1])!.starred === true)
 }
 
-// 5. multiple stars coexist
+// 5. multiple stars coexist (delta over seeded star count)
 S().toggleStar(seedIds[2])
-ok('two starred simultaneously', S().thoughts.filter((t) => t.starred).length === 2)
+ok('two starred simultaneously', S().thoughts.filter((t) => t.starred).length === starBase + 2)
 
 // 6. inbox grouping simulation mirrors InboxPage logic:
 //    Starred > Pinned(not starred) > Today > Earlier, buckets disjoint & complete
@@ -61,7 +67,11 @@ ok('two starred simultaneously', S().thoughts.filter((t) => t.starred).length ==
   const today = rest.filter((t) => Date.now() - t.createdAt < 24 * 3600_000)
   const earlier = rest.filter((t) => Date.now() - t.createdAt >= 24 * 3600_000)
 
-  ok('starred bucket contains starred rows', starredList.length === 3 && starredList.every(isStarred))
+  /* Seeded flags (th-launch starred, th-fixes pinned) join their buckets too,
+     so assert membership + bucket purity rather than absolute sizes. */
+  ok('starred bucket contains our three new stars',
+    [seedIds[0], seedIds[1], seedIds[2]].every((id) => starredList.some((t) => t.id === id)))
+  ok('starred bucket is pure', starredList.every(isStarred))
   ok('starred∩pinned-only excluded from pinned bucket', !pinnedList.some(isStarred))
   ok('both-pin-and-star lands in Starred only', starredList.some((t) => t.id === seedIds[0]) && !pinnedList.some((t) => t.id === seedIds[0]))
   ok('pinned-only lands in Pinned', pinnedList.some((t) => t.id === seedIds[3]))
