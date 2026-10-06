@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowDown, ArrowRight, Check, Copy, Download, GitBranch, History, Save } from 'lucide-react'
+import { ArrowDown, ArrowRight, Check, Copy, Download, GitBranch, History, Save, Zap } from 'lucide-react'
 import type { TimelineEvent, TimelineKind } from '../../data/types'
 import { useAppStore } from '../../lib/store'
 import { clockTime, dayLabel } from '../../hooks/useTransformPipeline'

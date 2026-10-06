@@ -6,6 +6,7 @@ import type {
   OutputType,
   OutputVersion,
   Thought,
+  ThoughtStatus,
   TimelineEvent,
   ToneId,
 } from '../data/types'

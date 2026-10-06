@@ -279,8 +279,32 @@ export function analyzeThought(text: string): TransformResult {
       type,
       label: `Create ${OUTPUT_LABEL[type].toLowerCase()}`,
       confidence: Math.round((0.95 - i * 0.12) * 100) / 100,
+      /* Phase 37 — explainable suggestions (spec §25): every ranked idea
+         carries a short "why" derived from the same deterministic signals
+         that produced it (preset match or detected intent). */
+      reason: suggestReason(type, preset ? 'preset' : det.intent),
     }))
   return { understanding: base, suggestions }
+}
+
+/* Phase 37 — one-line rationales keyed by output type and the signal that
+   surfaced it. Falls back to a generic but truthful sentence so a reason is
+   always present for UI tooltips. */
+const REASON_BY_TYPE: Partial<Record<OutputType, string>> = {
+  email: 'You seem to be writing to someone — an email draft gets you started.',
+  slack: 'This reads like a message for your team chat.',
+  tasks: 'Action words in your note map cleanly to a checklist.',
+  summary: 'A few dense sentences compress well into key points.',
+  plan: 'Multiple steps and dates suggest a structured plan.',
+  brief: 'Decision-heavy notes benefit from a pros/cons brief.',
+  post: 'This reads like something worth publishing as a post.',
+}
+
+function suggestReason(type: OutputType, signal: string): string {
+  if (signal === 'preset') {
+    return 'Matches a pattern seen in similar notes.'
+  }
+  return REASON_BY_TYPE[type] ?? `Ranked from detected intent (${signal.toLowerCase()}).`
 }
 
 /* ---------- Generation ---------- */
