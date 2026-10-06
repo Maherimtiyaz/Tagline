@@ -28,6 +28,9 @@ export function SettingsPage({ inApp = true }: { inApp?: boolean }) {
   const pushToast = useAppStore((s) => s.pushToast)
   const demoVisits = useAppStore((s) => s.demoVisits)
   const showOnboarding = useAppStore((s) => s.showOnboarding)
+  /* Phase 39 — learned preference signals (spec §68). */
+  const typeSignals = useAppStore((s) => s.typeSignals)
+  const resetSignals = useAppStore((s) => s.resetSignals)
   const navigate = useNavigate()
   const [confirming, setConfirming] = useState(false)
 
@@ -142,6 +145,34 @@ export function SettingsPage({ inApp = true }: { inApp?: boolean }) {
                 className="rounded-md border border-line px-3 py-1.5 text-xs text-ink-muted transition-colors hover:border-line-strong hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
               >
                 Replay welcome tour
+              </button>
+            </div>
+
+            {/* Phase 39 — the engine learns output-type preferences from your
+                feedback (spec §68); surface what it learned and let it go. */}
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
+              <div>
+                <p className="text-sm font-medium">Preference learning</p>
+                <p className="font-mono text-3xs text-ink-subtle">
+                  {typeSignals.length === 0
+                    ? 'Nothing learned yet — rate outputs helpful / needs work'
+                    : typeSignals
+                        .map((sig) => `${sig.type} ${sig.score > 0 ? `+${sig.score}` : sig.score}`)
+                        .join(' · ')}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={resetSignals}
+                disabled={typeSignals.length === 0}
+                className={cn(
+                  'rounded-md border px-3 py-1.5 text-xs transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent',
+                  typeSignals.length === 0
+                    ? 'cursor-not-allowed border-line text-ink-faint'
+                    : 'border-line text-ink-muted hover:border-coral hover:text-coral',
+                )}
+              >
+                Reset learned signals
               </button>
             </div>
           </div>

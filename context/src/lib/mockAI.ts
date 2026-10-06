@@ -4,6 +4,7 @@ import type {
   Suggestion,
   ToneId,
   TransformResult,
+  TypeSignal,
   Understanding,
 } from '../data/types'
 import { OUTPUT_LABEL } from './outputMeta'
@@ -263,8 +264,11 @@ function findPreset(text: string): Preset | undefined {
   return PRESETS.find((p) => p.match.test(text))
 }
 
-/** Understand a raw thought. Deterministic; never throws. */
-export function analyzeThought(text: string): TransformResult {
+/** Understand a raw thought. Deterministic; never throws.
+ *  Phase 39 — optional `signals` (learned per-type preference scores from
+ *  user feedback, spec §68) nudge the ranking without breaking determinism:
+ *  same text + same signals always produce the same order. */
+export function analyzeThought(text: string, signals?: TypeSignal[]): TransformResult {
   const preset = findPreset(text)
   const base = preset
     ? { ...preset.understanding, actions: preset.understanding.actions ?? [] }
@@ -273,18 +277,38 @@ export function analyzeThought(text: string): TransformResult {
   const order: OutputType[] = preset
     ? (Object.keys(preset.outputs) as OutputType[])
     : [det.type, 'tasks', 'summary']
+  const signalOf = (type: OutputType): number => {
+    if (!signals) return 0
+    const hit = signals.find((s) => s.type === type)
+    return hit ? clampScore(hit.score) : 0
+  }
   const suggestions: Suggestion[] = uniq(order)
     .slice(0, 4)
-    .map((type, i) => ({
-      type,
-      label: `Create ${OUTPUT_LABEL[type].toLowerCase()}`,
-      confidence: Math.round((0.95 - i * 0.12) * 100) / 100,
-      /* Phase 37 — explainable suggestions (spec §25): every ranked idea
-         carries a short "why" derived from the same deterministic signals
-         that produced it (preset match or detected intent). */
-      reason: suggestReason(type, preset ? 'preset' : det.intent),
-    }))
+    .map((type, i) => {
+      const raw = 0.95 - i * 0.12 + signalOf(type) * 0.1
+      return {
+        type,
+        label: `Create ${OUTPUT_LABEL[type].toLowerCase()}`,
+        confidence: Math.round(clamp(raw, 0.05, 0.99) * 100) / 100,
+        /* Phase 37 — explainable suggestions (spec §25): every ranked idea
+           carries a short "why" derived from the same deterministic signals
+           that produced it (preset match or detected intent). */
+        reason: suggestReason(type, preset ? 'preset' : det.intent, signalOf(type)),
+      }
+    })
+    /* Phase 39 — learned preferences re-rank candidates; ties keep the
+       engine's original order so behaviour stays predictable. */
+    .sort((a, b) => b.confidence - a.confidence)
   return { understanding: base, suggestions }
+}
+
+function clamp(v: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, v))
+}
+
+/** Clamp a persisted signal score into the safe learning range. */
+export function clampScore(score: number): number {
+  return Number.isFinite(score) ? clamp(score, -3, 3) : 0
 }
 
 /* Phase 37 — one-line rationales keyed by output type and the signal that
@@ -300,11 +324,22 @@ const REASON_BY_TYPE: Partial<Record<OutputType, string>> = {
   post: 'This reads like something worth publishing as a post.',
 }
 
-function suggestReason(type: OutputType, signal: string): string {
-  if (signal === 'preset') {
-    return 'Matches a pattern seen in similar notes.'
-  }
-  return REASON_BY_TYPE[type] ?? `Ranked from detected intent (${signal.toLowerCase()}).`
+/** Honest rationale suffix when learned feedback moved the ranking (§68). */
+export function preferenceNote(score: number): string {
+  if (score >= 0.5) return 'Ranked higher because you marked this kind helpful.'
+  if (score <= -0.5) return 'Ranked lower after your "needs work" signals.'
+  return ''
+}
+
+function suggestReason(type: OutputType, signal: string, score = 0): string {
+  const base =
+    signal === 'preset'
+      ? 'Matches a pattern seen in similar notes.'
+      : REASON_BY_TYPE[type] ?? `Ranked from detected intent (${signal.toLowerCase()}).`
+  /* Phase 39 — when learning actually changed this candidate's standing,
+     say so plainly instead of silently re-ranking. */
+  const note = preferenceNote(score)
+  return note ? `${base} ${note}` : base
 }
 
 /* ---------- Generation ---------- */
