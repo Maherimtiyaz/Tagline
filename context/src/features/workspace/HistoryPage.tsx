@@ -22,6 +22,8 @@ const KIND_ICON: Record<TimelineKind, React.ReactNode> = {
   export: <Download size={12} aria-hidden />,
   archive: <Check size={12} aria-hidden />,
   version: <History size={12} aria-hidden />,
+  /* Phase 35 — draft ↔ ready lifecycle transitions. */
+  lifecycle: <Zap size={12} aria-hidden />,
 }
 
 function SparkleMini() {
