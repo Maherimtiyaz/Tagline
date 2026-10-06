@@ -536,12 +536,15 @@ export const useAppStore = create<AppState>()(
 
   addThought: (text, source = 'text') => {
     const id = uid('th')
+    /* Phase 38 — rank suggestions once at capture so every surface can show
+       the engine's "why" without recomputing (spec §25 explainable). */
     const thought: Thought = {
       id,
       text,
       source,
       createdAt: Date.now(),
       status: 'raw',
+      suggestions: text.trim() ? analyzeThought(text).suggestions : [],
       outputs: [],
     }
     const ev: TimelineEvent = {
@@ -770,12 +773,16 @@ export const useAppStore = create<AppState>()(
     set((s) => ({
       thoughts: s.thoughts.map((t) => {
         if (t.id !== id) return t
-        const understanding = t.understanding ?? analyzeThought(t.text).understanding
+        const analysis = analyzeThought(t.text)
+        const understanding = t.understanding ?? analysis.understanding
         /* Phase 23: seed user tags from extracted topics on first
            transform — only when the thought has no tags yet, so later
            manual edits (incl. deliberate removals) are never overwritten. */
         const tags = t.tags?.length ? t.tags : (understanding.topics.slice(0, 4) || undefined)
-        return { ...t, status: 'processed' as const, understanding, outputs: [output, ...t.outputs], tags }
+        /* Phase 38: backfill ranked suggestions for rows captured before
+           this feature existed; same seed-once rule as tags. */
+        const suggestions = t.suggestions ?? analysis.suggestions
+        return { ...t, status: 'processed' as const, understanding, suggestions, outputs: [output, ...t.outputs], tags }
       }),
       timeline: [
         ...s.timeline,

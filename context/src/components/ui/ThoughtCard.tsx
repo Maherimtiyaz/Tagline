@@ -30,6 +30,7 @@ export function ThoughtCard({
   pinned,
   starred,
   tags,
+  suggestionReason,
   onOpen,
   onTransform,
   onDelete,
@@ -47,6 +48,8 @@ export function ThoughtCard({
   tags?: string[]
   /** Phase 25 — starred thoughts sort above pinned ones. */
   starred?: boolean
+  /** Phase 38 — the engine's "why" for its top suggestion (spec §25). */
+  suggestionReason?: string
   onOpen: () => void
   onTransform: () => void
   /** When provided (Drafts view), replaces Archive with Delete. */
@@ -128,8 +131,17 @@ export function ThoughtCard({
             <Badge tone="success">{outputCount} output{outputCount === 1 ? '' : 's'}</Badge>
           )}
           {status === 'raw' && suggestion && (
-            <span className="font-mono text-3xs text-ink-faint opacity-0 transition-opacity duration-[var(--duration-fast)] group-hover:opacity-100">
+            <span
+              className="font-mono text-3xs text-ink-faint opacity-0 transition-opacity duration-[var(--duration-fast)] group-hover:opacity-100"
+              title={suggestionReason}
+            >
               suggests: {suggestion.type}
+              {/* Phase 38 — the "why" is available on hover/focus, not just in the editor. */}
+              {suggestionReason && (
+                <span className="ml-2 normal-case tracking-normal italic opacity-75">
+                  — {suggestionReason}
+                </span>
+              )}
             </span>
           )}
         </div>

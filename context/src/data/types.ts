@@ -98,6 +98,9 @@ export interface Thought {
   source: SourceType
   createdAt: number
   status: ThoughtStatus
+  /** Phase 38 — the engine's ranked ideas, seeded at capture time so every
+   *  surface (cards, mobile chips, palette) can explain "why this?" (§25). */
+  suggestions?: Suggestion[]
   understanding?: Understanding
   outputs: GeneratedOutput[]
   collectionId?: string

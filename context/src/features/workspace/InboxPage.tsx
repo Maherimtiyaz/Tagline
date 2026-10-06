@@ -435,6 +435,7 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
                           <ThoughtCard
                             id={t.id} text={t.text} source={t.source} createdAt={t.createdAt}
                             status={t.status} outputCount={t.outputs.length} pinned={t.pinned} starred={t.starred} tags={t.tags}
+                            suggestionReason={t.suggestions?.[0]?.reason}
                             onOpen={() => navigate(`/app/thought/${t.id}`)}
                             onTransform={() => { transform(t.id, 'email'); navigate(`/app/thought/${t.id}`) }}
                             onDelete={view === 'drafts' ? () => deleteThought(t.id) : undefined}
