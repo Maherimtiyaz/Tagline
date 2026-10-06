@@ -120,6 +120,9 @@ export type TimelineKind =
   | 'save'
   | 'export'
   | 'archive'
+  /* Phase 35 — thought lifecycle (draft → ready) events render on the
+     global History timeline via this kind. */
+  | 'lifecycle'
   /* Phase 18/19 link: archived output snapshots render on the
      global History timeline via this kind. */
   | 'version'
