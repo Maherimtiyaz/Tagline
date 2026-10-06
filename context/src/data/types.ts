@@ -88,6 +88,8 @@ export interface Suggestion {
   type: OutputType
   label: string
   confidence: number /* 0..1 */
+  /** Phase 37 — why this suggestion was ranked (spec §25 "explainable"). */
+  reason?: string
 }
 
 export interface Thought {

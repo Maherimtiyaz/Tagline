@@ -410,6 +410,11 @@ export function ThoughtEditor({ thoughtId, onClose, initialType }: { thoughtId: 
                       <Wand2 size={15} className={i === 0 ? 'text-accent' : 'text-ink-faint'} aria-hidden />
                       <span className="flex-1">
                         <span className="block text-sm font-medium">{sug.label}</span>
+                        {/* Phase 37 — explainable suggestions (spec §25): the
+                            "why" is always visible, not hidden behind a tooltip. */}
+                        {sug.reason && (
+                          <span className="block text-2xs leading-snug text-ink-muted">{sug.reason}</span>
+                        )}
                         <span className="font-mono text-3xs text-ink-faint">
                           confidence {(sug.confidence * 100).toFixed(0)}%
                         </span>

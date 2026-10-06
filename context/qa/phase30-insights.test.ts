@@ -42,7 +42,7 @@ console.log('Phase 30: insights aggregation')
 /* ---------- funnel + counts ---------- */
 {
   const thoughts = [
-    thought({ id: 'a', starred: true, pinned: true, tags: ['Launch', 'client comms'], outputs: [
+    thought({ id: 'a', source: 'screenshot', starred: true, pinned: true, tags: ['Launch', 'client comms'], outputs: [
       out({ id: 'o1', type: 'email', feedback: { rating: 'helpful', at: NOW } }),
       out({ id: 'o2', type: 'slack', versions: [{ id: 'v1', at: NOW, label: 'L', body: 'b', tone: 'friendly' }] }),
     ] }),
@@ -71,8 +71,9 @@ console.log('Phase 30: insights aggregation')
   /* byType sorted desc; email(2) first */
   ok('byType desc order', i.byType[0].key === 'email' && i.byType[0].count === 2 && i.byType[0].label === 'Email')
   ok('byType includes plan', i.byType.some((r) => r.key === 'plan' && r.count === 1))
-  /* bySource: voice(2) > text(1) > … */
+  /* bySource: voice(2) > screenshot(1), text(1) (tie broken alphabetically) */
   ok('bySource voice leads with label', i.bySource[0].key === 'voice' && i.bySource[0].count === 2 && i.bySource[0].label === 'Voice')
+  ok('bySource tie order + labels', i.bySource[1].key === 'screenshot' && i.bySource[1].label === 'Screenshot' && i.bySource[2].key === 'text' && i.bySource[2].label === 'Typed')
 
   /* tags normalized case-insensitively: Launch + launch merge → 2 */
   ok('tagCounts merges case', i.tagCounts[0].key === 'launch' && i.tagCounts[0].count === 2 && i.tagCounts[0].label === '#launch')
