@@ -92,6 +92,15 @@ export interface Suggestion {
   reason?: string
 }
 
+/** Phase 39 — a per-output-type signal learned from user feedback. Positive
+ *  when an output of that type was rated helpful (§29), negative when it was
+ *  dismissed before generating or rated needs-work. Persisted, capped, and
+ *  fed back into analyzeThought's ranking (spec §68 "learns preferences"). */
+export interface TypeSignal {
+  type: OutputType
+  score: number
+}
+
 export interface Thought {
   id: string
   text: string

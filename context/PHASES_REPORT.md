@@ -206,3 +206,14 @@ Six defects found & fixed: dead `--duration-normal` token; missing inbox loading
 - ✅ Build clean (✓ 1.40s); lint 0 errors (5 pre-existing warnings); preview sweep all 8 routes → 200
 
 **Files touched:** `src/lib/store.ts`, `src/features/thoughts/ThoughtEditor.tsx`, `qa/phase34-autosave.test.ts`, `PHASES_REPORT.md`
+
+### Phase 39 — Preference Learning from Feedback (extension) ✅ SHIPPED
+- Closes the §29 → §68 loop: output ratings now distill into persisted per-type preference signals that feed back into suggestion ranking ("the product learns your preferences").
+- `src/data/types.ts`: new `TypeSignal {type, score}`; `src/lib/mockAI.ts`: `analyzeThought(text, signals?)` nudges confidence (`+score*0.1`, clamped 0.05–0.99), re-ranks candidates (ties keep engine order → deterministic), and appends an honest rationale suffix via `preferenceNote()` ("Ranked higher because you marked this kind helpful."). Exported `clampScore` (±3 range, non-finite → 0).
+- `src/lib/store.ts`: `typeSignals` state + `bumpSignal(type, delta)` (zero-scores dropped) + `resetSignals()` (toast-confirmed); `rateOutput` bumps ±1, `clearFeedback` retracts symmetrically so learning can't drift; `addThought`/`transform` seed suggestions with live signals; persistence round-trips through new `sanitizeSignals()` (unknown types, non-numerics, dupes, zeros all dropped — malformed payloads never poison ranking).
+- UI: `ThoughtEditor` preview passes `typeSignals` so on-screen ranking matches capture-time seeding; Settings gains a "Preference learning" row listing learned scores (mono, tabular) with a **Reset learned signals** button (disabled/focus-visible states per tokens).
+- ✅ `qa/phase39-learning.test.ts`: 22/22 pass (clamp bounds incl. Infinity→0 no-signal semantics, sanitize ×7, lift/lower confidence, honest reason text, determinism, range guard)
+- ✅ Regressions green: P29 feedback 22/22 · P37 explain 14/14 · P38 seeded 11/11
+- ✅ Build clean (✓ 1.40s); lint 0 errors (5 pre-existing warnings); preview sweep all 9 routes → 200
+
+**Files touched:** `src/data/types.ts`, `src/lib/mockAI.ts`, `src/lib/store.ts`, `src/features/thoughts/ThoughtEditor.tsx`, `src/features/settings/SettingsPage.tsx`, `qa/phase39-learning.test.ts`, `PHASES_REPORT.md`

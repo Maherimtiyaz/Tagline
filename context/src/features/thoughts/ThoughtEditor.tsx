@@ -42,6 +42,9 @@ export function ThoughtEditor({ thoughtId, onClose, initialType }: { thoughtId: 
   const clearDraftKey = useAppStore((s) => s.clearDraft)
   const getDraft = useAppStore((s) => s.getDraft)
   const pushToast = useAppStore((s) => s.pushToast)
+  /* Phase 39 — live preference signals feed the local suggestion preview so
+     the editor ranking matches what addThought/transform will seed (§68). */
+  const typeSignals = useAppStore((s) => s.typeSignals)
   const [recovery, setRecovery] = useState<EditorDraft | null>(null)
   const autosaveTimer = useRef<number | undefined>(undefined)
 
@@ -96,7 +99,7 @@ export function ThoughtEditor({ thoughtId, onClose, initialType }: { thoughtId: 
     clearDraftKey(thoughtId)
   }
 
-  const result = useMemo(() => (draft.trim() ? analyzeThought(draft) : null), [draft])
+  const result = useMemo(() => (draft.trim() ? analyzeThought(draft, typeSignals) : null), [draft, typeSignals])
   const running = pipeline.stage !== 'idle' && pipeline.stage !== 'ready'
   const output = thought?.outputs.find((o) => o.id === outputId) ?? thought?.outputs[0]
 

@@ -9,9 +9,11 @@ import type {
   ThoughtStatus,
   TimelineEvent,
   ToneId,
+  TypeSignal,
 } from '../data/types'
 import { COLLECTIONS, SEED_THOUGHTS, SEED_TIMELINE } from '../data/mock'
-import { analyzeThought, generateOutput, retune, uid } from './mockAI'
+import { analyzeThought, clampScore, generateOutput, retune, uid } from './mockAI'
+import { OUTPUT_TYPES } from './outputMeta'
 
 /* Phase 23 — tag normalization: trim, collapse inner whitespace, drop
    leading '#', cap length. Returns '' for unusable input. */
@@ -65,6 +67,24 @@ interface PersistedShape {
   onboardingSeen?: boolean
   /** Completed demo runs this browser (spec §56 conversion tracking). */
   demoVisits?: number
+  /** Phase 39 — learned per-type preference signals (spec §68). */
+  typeSignals?: TypeSignal[]
+}
+
+/** Sanitize a persisted signal list: valid entries only, one per type,
+ *  scores clamped, zero-scores dropped, capped at the known output types. */
+export function sanitizeSignals(list: unknown): TypeSignal[] {
+  if (!Array.isArray(list)) return []
+  const seen = new Map<OutputType, number>()
+  for (const s of list) {
+    if (!s || typeof s !== 'object') continue
+    const { type, score } = s as Record<string, unknown>
+    if (typeof type !== 'string' || !OUTPUT_TYPES.some((t) => t.id === type)) continue
+    if (typeof score !== 'number' || !Number.isFinite(score)) continue
+    const clamped = clampScore(score)
+    if (clamped !== 0) seen.set(type as OutputType, clamped)
+  }
+  return [...seen.entries()].map(([type, sc]) => ({ type, score: sc }))
 }
 
 /** Merge persisted thoughts with seeds: seeds win on id collisions,
@@ -91,6 +111,9 @@ function mergeWithSeeds(persisted?: PersistedShape | null): PersistedShape {
       typeof persisted.demoVisits === 'number' && Number.isFinite(persisted.demoVisits)
         ? Math.max(0, Math.floor(persisted.demoVisits))
         : 0,
+    /* Phase 39 — learned signals survive refresh; malformed payloads
+       sanitize to an empty list rather than poisoning the ranking. */
+    typeSignals: sanitizeSignals(persisted.typeSignals),
   }
 }
 
@@ -355,6 +378,14 @@ interface AppState {
   /** Drop one autosave (after commit, explicit discard, or restore). */
   clearDraft: (thoughtId: string) => void
 
+  /* Phase 39 — learned preferences (spec §68) */
+  /** Per-output-type scores distilled from feedback; feeds analyzeThought. */
+  typeSignals: TypeSignal[]
+  /** Nudge one type's score by `delta` (clamped ±3, zeros dropped). */
+  bumpSignal: (type: OutputType, delta: number) => void
+  /** Forget everything the engine learned about your preferences. */
+  resetSignals: () => void
+
   setSearchQuery: (q: string) => void
 
   pushToast: (
@@ -370,6 +401,7 @@ const seedState = () => ({
   thoughts: SEED_THOUGHTS.map((t) => ({ ...t, outputs: [...t.outputs] })),
   timeline: [...SEED_TIMELINE],
   userCollections: [] as Collection[],
+  typeSignals: [] as TypeSignal[],
 })
 
 /** Deterministic palette rotation for user-created collections. */
@@ -544,7 +576,7 @@ export const useAppStore = create<AppState>()(
       source,
       createdAt: Date.now(),
       status: 'raw',
-      suggestions: text.trim() ? analyzeThought(text).suggestions : [],
+      suggestions: text.trim() ? analyzeThought(text, get().typeSignals).suggestions : [],
       outputs: [],
     }
     const ev: TimelineEvent = {
@@ -773,7 +805,7 @@ export const useAppStore = create<AppState>()(
     set((s) => ({
       thoughts: s.thoughts.map((t) => {
         if (t.id !== id) return t
-        const analysis = analyzeThought(t.text)
+        const analysis = analyzeThought(t.text, get().typeSignals)
         const understanding = t.understanding ?? analysis.understanding
         /* Phase 23: seed user tags from extracted topics on first
            transform — only when the thought has no tags yet, so later
@@ -1048,6 +1080,9 @@ export const useAppStore = create<AppState>()(
     if (clearing) {
       get().pushToast('Feedback cleared', 'info')
     } else {
+      /* Phase 39 — distill the rating into a per-type preference signal so
+         future rankings learn what this user actually likes (spec §68). */
+      get().bumpSignal(output.type, rating === 'helpful' ? 1 : -1)
       set((s) => ({
         timeline: [
           ...s.timeline,
@@ -1074,6 +1109,7 @@ export const useAppStore = create<AppState>()(
     const thought = get().thoughts.find((t) => t.id === thoughtId)
     const output = thought?.outputs.find((o) => o.id === outputId)
     if (!thought || !output || !output.feedback) return false
+    const wasHelpful = output.feedback.rating === 'helpful'
     set((s) => ({
       thoughts: s.thoughts.map((t) =>
         t.id === thoughtId
@@ -1081,7 +1117,27 @@ export const useAppStore = create<AppState>()(
           : t,
       ),
     }))
+    /* Phase 39 — retracting the rating also retracts its learning effect. */
+    get().bumpSignal(output.type, wasHelpful ? -1 : 1)
     return true
+  },
+
+  /* ---- Phase 39: learned preferences ---- */
+
+  bumpSignal: (type, delta) => {
+    if (!Number.isFinite(delta) || delta === 0) return
+    set((s) => {
+      const others = s.typeSignals.filter((x) => x.type !== type)
+      const current = s.typeSignals.find((x) => x.type === type)?.score ?? 0
+      const next = clampScore(current + delta)
+      if (next === 0) return { typeSignals: others }
+      return { typeSignals: [...others, { type, score: next }] }
+    })
+  },
+
+  resetSignals: () => {
+    set({ typeSignals: [] })
+    get().pushToast('Preference learning reset', 'info')
   },
 
   saveToCollection: (thoughtId, outputId, collectionName) => {
@@ -1224,6 +1280,7 @@ export const useAppStore = create<AppState>()(
         userCollections: s.userCollections,
         onboardingSeen: s.onboardingSeen,
         demoVisits: s.demoVisits,
+        typeSignals: s.typeSignals,
       }),
       merge: (persisted, current) => ({
         ...current,
