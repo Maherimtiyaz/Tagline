@@ -92,6 +92,29 @@ export interface Suggestion {
   reason?: string
 }
 
+/** Phase 40 — Weekly Digest. One deterministic recap per ISO week,
+ *  stored under its ISO week key so generation is idempotent: asking
+ *  for the same week twice returns the existing digest untouched. */
+export interface DigestSection {
+  heading: string
+  items: string[]
+}
+
+export interface WeeklyDigest {
+  /** ISO-8601 week key, e.g. `2026-W41` — also the id (unique per week). */
+  weekKey: string
+  /** Monday 00:00 local — start of the covered week. */
+  from: number
+  /** Sunday 23:59:59.999 local — end of the covered week. */
+  to: number
+  generatedAt: number
+  headline: string
+  captured: number
+  transformed: number
+  exported: number
+  sections: DigestSection[]
+}
+
 export interface Thought {
   id: string
   text: string

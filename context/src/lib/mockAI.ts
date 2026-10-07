@@ -1,10 +1,14 @@
 import type {
+  DigestSection,
   GeneratedOutput,
   OutputType,
   Suggestion,
+  Thought,
+  TimelineEvent,
   ToneId,
   TransformResult,
   Understanding,
+  WeeklyDigest,
 } from '../data/types'
 import { OUTPUT_LABEL } from './outputMeta'
 
@@ -495,4 +499,160 @@ export const SCREENSHOT_ANALYSIS = {
   detected: ['Interface', 'Text blocks', 'Buttons', 'Navigation'],
   summary:
     'Landing page screenshot. Above the fold: headline, subhead and one primary CTA. Navigation has five links plus a sign-in. Two feature sections below, each with an image left / text right. Contrast reads well; the secondary CTA competes slightly with the primary. Suggested action: demote the secondary button to a text link and tighten hero copy.',
+}
+
+/* ============================================================
+   Phase 40 — Weekly Digest engine (deterministic, local).
+
+   isoWeekKey / weekBounds are pure date math; buildWeeklyDigest
+   folds a week's thoughts + timeline events into a WeeklyDigest.
+   Same inputs always produce byte-identical content — the only
+   clock read is `generatedAt`, which callers may override so even
+   that stays fixed under test. The store keeps digests keyed by
+   ISO week, so regenerating a known week is a no-op (idempotent).
+   ============================================================ */
+
+const DAY_MS = 86_400_000
+
+/** ISO-8601 week key (`YYYY-Www`) for a timestamp. ISO weeks start on
+ *  Monday and W01 contains the year's first Thursday; the year component
+ *  is the ISO year, so 2027-01-01 (a Friday) correctly keys as 2026-W53. */
+export function isoWeekKey(ts: number): string {
+  const d = new Date(ts)
+  d.setHours(0, 0, 0, 0)
+  /* ISO day: Mon=1 … Sun=7 (JS getDay(): Sun=0). */
+  const isoDow = (d.getDay() + 6) % 7 + 1
+  /* Shift to this week's Thursday — it decides the ISO year. */
+  d.setDate(d.getDate() + (4 - isoDow))
+  const isoYear = d.getFullYear()
+  const jan1 = new Date(isoYear, 0, 1)
+  const jan1IsoDow = (jan1.getDay() + 6) % 7 + 1
+  /* Days from Jan 1 (of the ISO year) to that year's first Monday. */
+  const firstMondayOffset = jan1IsoDow === 1 ? 0 : 8 - jan1IsoDow
+  const w1 = new Date(isoYear, 0, 1 + firstMondayOffset)
+  const week = Math.floor((d.getTime() - w1.getTime()) / (7 * DAY_MS)) + 1
+  return `${isoYear}-W${String(week).padStart(2, '0')}`
+}
+
+/** Local Monday 00:00 containing `ts`. */
+export function weekStart(ts: number): number {
+  const d = new Date(ts)
+  d.setHours(0, 0, 0, 0)
+  const dow = (d.getDay() + 6) % 7 /* Mon=0 … Sun=6 */
+  d.setDate(d.getDate() - dow)
+  return d.getTime()
+}
+
+/** Inclusive [Mon 00:00.000, Sun 23:59:59.999] bounds of the week containing `ts`. */
+export function weekBounds(ts: number): { from: number; to: number } {
+  const from = weekStart(ts)
+  return { from, to: from + 7 * DAY_MS - 1 }
+}
+
+function digestSentence(text: string): string {
+  const s = text.trim().split(/[.!?\n]/)[0] ?? text
+  return s.length > 90 ? s.slice(0, 87) + '…' : s
+}
+
+/** Deterministic weekly recap. Pure: never touches Date.now() unless
+ *  `now` is omitted, never mutates its inputs, never throws. */
+export function buildWeeklyDigest(
+  refTs: number,
+  thoughts: Thought[],
+  timeline: TimelineEvent[],
+  now?: number,
+): WeeklyDigest {
+  const { from, to } = weekBounds(refTs)
+  const inRange = (t: number) => t >= from && t <= to
+  const wkThoughts = thoughts
+    .filter((t) => t && inRange(t.createdAt))
+    .sort((a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : 1))
+  const wkEvents = timeline
+    .filter((e) => e && inRange(e.at))
+    .sort((a, b) => a.at - b.at || (a.id < b.id ? -1 : 1))
+
+  const transformed = wkThoughts.filter((t) => t.outputs.length > 0).length
+  const exported = wkEvents.filter((e) => e.kind === 'export').length
+  const starred = wkThoughts.filter((t) => t.starred)
+  const pinned = wkThoughts.filter((t) => t.pinned && !t.starred)
+
+  /* Top formats this week: count desc → label asc (stable tie-break). */
+  const formatCounts = new Map<string, number>()
+  for (const t of wkThoughts)
+    for (const o of t.outputs) formatCounts.set(o.type, (formatCounts.get(o.type) ?? 0) + 1)
+  const topFormats = [...formatCounts.entries()]
+    .sort((a, b) => b[1] - a[1] || (OUTPUT_LABEL[a[0] as OutputType] < OUTPUT_LABEL[b[0] as OutputType] ? -1 : 1))
+    .slice(0, 3)
+    .map(([type, n]) => `${OUTPUT_LABEL[type as OutputType]} ×${n}`)
+
+  /* Most-used tags this week: count desc → name asc. */
+  const tagCounts = new Map<string, number>()
+  for (const t of wkThoughts)
+    for (const raw of t.tags ?? []) {
+      const tag = raw.trim().replace(/^#+/, '').toLowerCase()
+      if (tag) tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1)
+    }
+  const topTags = [...tagCounts.entries()]
+    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
+    .slice(0, 5)
+    .map(([tag, n]) => `#${tag} (${n})`)
+
+  const fmtDate = (ts: number) =>
+    new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+
+  const sections: DigestSection[] = []
+  if (starred.length > 0) {
+    sections.push({
+      heading: 'Starred highlights',
+      items: starred.slice(0, 5).map((t) => `★ ${digestSentence(t.text)} (${fmtDate(t.createdAt)})`),
+    })
+  }
+  if (pinned.length > 0) {
+    sections.push({
+      heading: 'Still pinned',
+      items: pinned.slice(0, 5).map((t) => `📌 ${digestSentence(t.text)} (${fmtDate(t.createdAt)})`),
+    })
+  }
+  if (topFormats.length > 0) {
+    sections.push({
+      heading: 'Top formats',
+      items: [`You leaned on: ${topFormats.join(', ')}.`],
+    })
+  }
+  if (topTags.length > 0) {
+    sections.push({
+      heading: 'Themes in your tags',
+      items: [`Most-used labels: ${topTags.join(', ')}.`],
+    })
+  }
+  const captures = wkThoughts.slice(0, 6).map((t) => `· ${digestSentence(t.text)} (${fmtDate(t.createdAt)})`)
+  if (captures.length > 0) {
+    sections.push({
+      heading: wkThoughts.length > 6 ? `Captures (${wkThoughts.length}, showing 6)` : 'Captures',
+      items: captures,
+    })
+  }
+  if (wkThoughts.length === 0) {
+    sections.push({
+      heading: 'Quiet week',
+      items: ['No thoughts captured between ' + fmtDate(from) + ' and ' + fmtDate(to) + '. The inbox is empty — enjoy it while it lasts.'],
+    })
+  }
+
+  const headline =
+    wkThoughts.length === 0
+      ? `A quiet week · ${fmtDate(from)}–${fmtDate(to)}`
+      : `${wkThoughts.length} capture${wkThoughts.length === 1 ? '' : 's'} · ${transformed} turned into documents · ${exported} export${exported === 1 ? '' : 's'}`
+
+  return {
+    weekKey: isoWeekKey(refTs),
+    from,
+    to,
+    generatedAt: now ?? Date.now(),
+    headline,
+    captured: wkThoughts.length,
+    transformed,
+    exported,
+    sections,
+  }
 }
