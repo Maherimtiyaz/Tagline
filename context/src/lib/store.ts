@@ -61,11 +61,42 @@ const safeStorage = {
 interface PersistedShape {
   thoughts: Thought[]
   timeline: TimelineEvent[]
-  /** User-created collections (Phase 12) — now survive refresh. */
+  /** Collections the user created in this demo (Phase 12) — now survive refresh. */
   userCollections?: Collection[]
   onboardingSeen?: boolean
-  /** Completed demo runs this browser (spec §56 conversion tracking). */
+  /** Completed demo runs recorded in this browser (spec §56, persisted). */
   demoVisits?: number
+  /** Phase 40/41 — generated weekly digests keyed by ISO week (`YYYY-Www`). */
+  digests?: Record<string, WeeklyDigest>
+}
+
+/** Phase 41 — runtime validation of a persisted/broadcast digest map.
+ *  Keeps the demo brick-proof: bad rows are dropped, valid ones kept. */
+function sanitizeDigests(raw: unknown): Record<string, WeeklyDigest> | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
+  const out: Record<string, WeeklyDigest> = {}
+  for (const [key, d] of Object.entries(raw as Record<string, unknown>)) {
+    if (!d || typeof d !== 'object') continue
+    const x = d as Partial<WeeklyDigest>
+    if (
+      x.weekKey === key &&
+      typeof x.from === 'number' &&
+      typeof x.to === 'number' &&
+      typeof x.generatedAt === 'number' &&
+      typeof x.headline === 'string' &&
+      Array.isArray(x.sections) &&
+      x.sections.every(
+        (sec) =>
+          !!sec &&
+          typeof sec.heading === 'string' &&
+          Array.isArray(sec.items) &&
+          sec.items.every((i) => typeof i === 'string'),
+      )
+    ) {
+      out[key] = x as WeeklyDigest
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined
 }
 
 /** Merge persisted thoughts with seeds: seeds win on id collisions,
@@ -92,6 +123,8 @@ function mergeWithSeeds(persisted?: PersistedShape | null): PersistedShape {
       typeof persisted.demoVisits === 'number' && Number.isFinite(persisted.demoVisits)
         ? Math.max(0, Math.floor(persisted.demoVisits))
         : 0,
+    /* Phase 41: digests ride the same envelope; validated row-by-row. */
+    digests: sanitizeDigests(persisted.digests),
   }
 }
 
@@ -356,6 +389,20 @@ interface AppState {
   /** Drop one autosave (after commit, explicit discard, or restore). */
   clearDraft: (thoughtId: string) => void
 
+  /** Phase 40/41 — weekly digests keyed by ISO week; one recap per week,
+   *  generation is idempotent (asking twice returns the stored digest). */
+  digests: Record<string, WeeklyDigest>
+
+  /* ---- Phase 41: digest actions ---- */
+  /** Generate (or return the existing) digest for the ISO week containing
+   *  `refTs`. First generation records a 'digest' timeline event + toast;
+   *  repeat calls are pure no-ops. Returns { digest, created }. */
+  generateDigest: (refTs?: number) => { digest: WeeklyDigest; created: boolean }
+  /** Stored digest for a specific ISO week key ('' / unknown → undefined). */
+  getDigest: (weekKey: string) => WeeklyDigest | undefined
+  /** Drop one stored digest so the week can be regenerated fresh. */
+  clearDigest: (weekKey: string) => boolean
+
   setSearchQuery: (q: string) => void
 
   pushToast: (
@@ -371,6 +418,8 @@ const seedState = () => ({
   thoughts: SEED_THOUGHTS.map((t) => ({ ...t, outputs: [...t.outputs] })),
   timeline: [...SEED_TIMELINE],
   userCollections: [] as Collection[],
+  /* Phase 41: digests start empty — they are generated on demand. */
+  digests: {} as Record<string, WeeklyDigest>,
 })
 
 /** Deterministic palette rotation for user-created collections. */
@@ -393,6 +442,45 @@ export const useAppStore = create<AppState>()(
       userCollections: [] as Collection[],
       onboardingSeen: false,
       demoVisits: 0,
+      digests: {},
+
+      /* ---- Phase 41: digest actions (builds on the Phase 40 engine) ---- */
+      generateDigest: (refTs?: number) => {
+        const now = Date.now()
+        const weekKey = isoWeekKey(refTs ?? now)
+        const existing = get().digests[weekKey]
+        if (existing) return { digest: existing, created: false }
+        const digest = buildWeeklyDigest(refTs ?? now, get().thoughts, get().timeline, now)
+        set((s) => ({
+          digests: { ...s.digests, [weekKey]: digest },
+          timeline: [
+            ...s.timeline,
+            {
+              id: uid('ev'),
+              thoughtId: 'digest',
+              at: now,
+              kind: 'digest' as const,
+              label: `Weekly digest · ${weekKey}`,
+              detail: digest.headline,
+            },
+          ],
+        }))
+        broadcastDomainChange()
+        return { digest, created: true }
+      },
+
+      getDigest: (weekKey) => (weekKey ? get().digests[weekKey] : undefined),
+
+      clearDigest: (weekKey) => {
+        if (!get().digests[weekKey]) return false
+        set((s) => {
+          const next = { ...s.digests }
+          delete next[weekKey]
+          return { digests: next }
+        })
+        broadcastDomainChange()
+        return true
+      },
 
       select: (id) => set({ selectedThoughtId: id }),
 
@@ -535,7 +623,19 @@ export const useAppStore = create<AppState>()(
       recordDemoVisit: () => set((s) => ({ demoVisits: s.demoVisits + 1 })),
       setSearchQuery: (q) => set({ searchQuery: q }),
 
-  addThought: (text, source = 'text') => {
+      /* ---- Phase 41: digest generation with toast feedback ---- */
+      /** Generate (or return the existing) digest for the ISO week containing
+       *  `refTs`. Toast + timeline event fire only on first generation —
+       *  repeat calls are idempotent no-ops returning the stored digest. */
+      generateDigest: (refTs?: number) => {
+        const res = get().generateDigest(refTs)
+        if (res.created) {
+          get().pushToast(`Weekly digest ready · ${res.digest.weekKey}`, 'success')
+        }
+        return res
+      },
+
+      addThought: (text, source = 'text') => {
     const id = uid('th')
     const thought: Thought = {
       id,
