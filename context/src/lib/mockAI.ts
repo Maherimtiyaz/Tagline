@@ -656,3 +656,70 @@ export function buildWeeklyDigest(
     sections,
   }
 }
+
+/* ============================================================
+   Phase 41 — Digest serialization + week math helpers.
+
+   digestToMarkdown renders a WeeklyDigest as plain markdown for
+   the "Download .md" affordance. It is pure and deterministic:
+   same digest in → byte-identical string out (no clock reads).
+   addWeeks / recentWeekKeys are small pure date helpers used by
+   the Digest page's week navigation; they key everything through
+   isoWeekKey so DST and partial weeks can't drift the sequence.
+   ============================================================ */
+
+/** Add `n` whole ISO weeks to a timestamp (n may be negative).
+ *  Jumps exactly 7 days per step and re-anchors to that week's
+ *  Monday 00:00 local, so repeated calls walk Mon→Mon cleanly
+ *  even across DST transitions. */
+export function addWeeks(ts: number, n: number): number {
+  const target = ts + n * 7 * DAY_MS
+  return weekStart(target)
+}
+
+/** The last `count` ISO-week keys ending at the week containing
+ *  `refTs`, newest first (e.g. ['2026-W41', '2026-W40', …]). */
+export function recentWeekKeys(refTs: number, count: number): string[] {
+  const keys: string[] = []
+  for (let i = 0; i < Math.max(0, count); i++) {
+    keys.push(isoWeekKey(addWeeks(refTs, -i)))
+  }
+  return keys
+}
+
+const WEEK_KEY_RE = /^\d{4}-W\d{2}$/
+
+/** Human label for an ISO week key: `2026-W41` → `Week 41 · 2026`.
+ *  Falls back to the raw key for anything malformed (never throws). */
+export function formatWeekKey(weekKey: string): string {
+  if (!WEEK_KEY_RE.test(weekKey)) return weekKey
+  const [year, week] = weekKey.split('-W')
+  return `Week ${Number(week)} · ${year}`
+}
+
+/** Deterministic markdown rendering of a digest (Phase 41 export). */
+export function digestToMarkdown(d: WeeklyDigest): string {
+  const fmtDate = (ts: number) =>
+    new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  const lines: string[] = []
+  lines.push(`# Weekly Digest — ${formatWeekKey(d.weekKey)}`)
+  lines.push('')
+  lines.push(`_${fmtDate(d.from)} – ${fmtDate(d.to)}_`)
+  lines.push('')
+  lines.push(`**${d.headline}**`)
+  lines.push('')
+  lines.push(
+    `- Captured: ${d.captured} · Transformed: ${d.transformed} · Exported: ${d.exported}`,
+  )
+  for (const sec of d.sections) {
+    lines.push('')
+    lines.push(`## ${sec.heading}`)
+    lines.push('')
+    for (const item of sec.items) lines.push(`- ${item}`)
+  }
+  lines.push('')
+  lines.push(
+    `_Generated locally by Context · ${new Date(d.generatedAt).toISOString()}_`,
+  )
+  return lines.join('\n')
+}
