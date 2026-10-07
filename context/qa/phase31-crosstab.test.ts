@@ -41,7 +41,7 @@ S().resetDemo()
 const seededCount = S().thoughts.length
 
 /* 1. persist writes land in (fake) localStorage in zustand's envelope */
-const id1 = S().addThought({ rawText: 'Sync probe one', source: 'text' })
+const id1 = S().addThought('Sync probe one')
 const rawKey = [...store.keys()][0]
 ok('persist wrote to storage key', rawKey === 'context-demo-state-v1')
 const envelope = JSON.parse(store.get(rawKey!)!)

@@ -31,9 +31,14 @@ console.log('Phase 26: sidebar signal & tag counts')
 S().resetDemo()
 const seedIds = S().thoughts.map((t) => t.id)
 
-// 1. seeded state: signals zero, tags populated
-ok('seeded starred count = 0', signalCounts().starred === 0)
-ok('seeded pinned count = 0', signalCounts().pinned === 0)
+/* Phase 28 seeds ship curated flags (th-launch starred, th-fixes pinned), so
+   every signal assertion below is DELTA-based against the seeded baseline. */
+const starBase = signalCounts().starred
+const pinBase = signalCounts().pinned
+
+// 1. seeded state: signals match curated seed, tags populated
+ok('seeded starred count matches seed', signalCounts().starred === starBase && starBase >= 1)
+ok('seeded pinned count matches seed', signalCounts().pinned === pinBase && pinBase >= 1)
 const seededTags = tagCounts()
 ok('seeded tag list non-empty', seededTags.length > 0)
 ok('tag list sorted by count desc', seededTags.every(([, c], i) => i === 0 || seededTags[i - 1][1] >= c))
@@ -42,16 +47,16 @@ ok('counts sum matches tag instances', seededTags.reduce((n, [, c]) => n + c, 0)
 
 // 2. star reflects in count
 S().toggleStar(seedIds[0]); S().toggleStar(seedIds[1])
-ok('two stars → starred count 2', signalCounts().starred === 2)
+ok('two new stars → base + 2', signalCounts().starred === starBase + 2)
 S().toggleStar(seedIds[0])
-ok('unstar decrements to 1', signalCounts().starred === 1)
+ok('unstar decrements back to base + 1', signalCounts().starred === starBase + 1)
 
 // 3. pin reflects in count; independent of star
 S().togglePin(seedIds[0]); S().togglePin(seedIds[2])
-ok('pin count 2', signalCounts().pinned === 2)
-ok('star unaffected by pins', signalCounts().starred === 1)
+ok('two new pins → base + 2', signalCounts().pinned === pinBase + 2)
+ok('star unaffected by pins', signalCounts().starred === starBase + 1)
 S().togglePin(seedIds[0]) // row 0 also starred — double signal
-ok('row can count once in each bucket', signalCounts().pinned === 1 && signalCounts().starred === 1)
+ok('row can count once in each bucket', signalCounts().pinned === pinBase + 1 && signalCounts().starred === starBase + 1)
 
 // 4. archived rows excluded from all three counters
 const archId = seedIds[3]
@@ -95,9 +100,9 @@ if (raw) {
   ok('persist middleware writes storage (jsdom-less env tolerated)', true)
 }
 
-// 8. resetDemo zeroes signals again
+// 8. resetDemo restores the curated seed signals exactly
 S().resetDemo()
-ok('reset clears starred/pinned', signalCounts().starred === 0 && signalCounts().pinned === 0)
+ok('reset restores seeded star/pin baseline', signalCounts().starred === starBase && signalCounts().pinned === pinBase)
 ok('reset restores seed tag registry', tagCounts().length > 0)
 
 console.log(`\n${pass} passed, ${fail} failed`)

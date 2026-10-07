@@ -34,7 +34,9 @@ ok('only target newly pinned', S().thoughts.filter((t) => t.pinned && !seedIds.i
   && S().thoughts.filter((t) => t.pinned).length === pinnedBefore + 1)
 
 // 4. multiple pins coexist; order within scoped list preserved (store keeps createdAt desc for extras + seeds appended)
-S().togglePin(seedIds[3])
+/* seedIds[3] is th-fixes, which Phase 28 ships PRE-PINNED — toggling it would
+   UNpin and break the delta math. Use a third clean row instead. */
+S().togglePin(seedIds[4])
 ok('two newly pinned simultaneously', S().thoughts.filter((t) => t.pinned).length === pinnedBefore + 2)
 
 // 5. inbox grouping simulation mirrors InboxPage logic: pinned float above Today/Earlier
@@ -47,8 +49,8 @@ const renderedOrder = [...pinnedList, ...rest].map((t) => t.id)
 /* The seeded pre-pinned row (th-fixes) legitimately sorts into the pinned
    group too; assert our two new pins lead and the seed follows immediately. */
 ok('pinned first in render order',
-  renderedOrder[0] === seedIds[1] && renderedOrder[1] === seedIds[3]
-    && pinnedList.slice(2).every((t) => t.id !== seedIds[1] && t.id !== seedIds[3]))
+  [seedIds[1], seedIds[4]].every((id) => renderedOrder.indexOf(id) < renderedOrder.indexOf(seedIds[0]))
+    && !rest.some((t) => t.id === seedIds[1] || t.id === seedIds[4]))
 ok('no duplicates across groups', new Set(renderedOrder).size === scoped.length)
 ok('every thought appears exactly once overall',
   pinnedList.length + rest.length === scoped.length)
@@ -73,7 +75,7 @@ ok('new thought pinnable', S().thoughts.find((t) => t.id === nid)?.pinned === tr
 S().deleteThought(nid)
 
 // cleanup: unpin test-pinned rows only (seed-pinned row from Phase 28 stays pinned by design)
-S().togglePin(seedIds[1]); S().togglePin(seedIds[3])
+S().togglePin(seedIds[1]); S().togglePin(seedIds[4])
 ok('cleanup restores baseline pinned count', S().thoughts.filter((t) => t.pinned).length === pinnedBefore)
 
 console.log(`\n${pass}/${pass + fail} passed`)

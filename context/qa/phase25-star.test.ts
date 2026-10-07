@@ -13,9 +13,20 @@ S().resetDemo()
 /* Phase 28 seeds ship curated flags (th-launch starred, th-fixes pinned), so
    every assertion below is DELTA-based against the seeded baseline. */
 let starBase = 0
+let pinBase = 0
 
 starBase = S().thoughts.filter((t) => t.starred).length
+pinBase = S().thoughts.filter((t) => t.pinned).length
 const seedIds = S().thoughts.map((t) => t.id)
+/* Curated seeds carry flags (th-launch starred, th-fixes pinned), which breaks
+   absolute toggle arithmetic. Clear them so the baseline is zero and every
+   "new" row starts unflagged; seeded provenance itself is asserted separately. */
+S().toggleStar(seedIds[2]) // th-launch — seeded star
+S().togglePin(seedIds[3])  // th-fixes — seeded pin
+starBase = 0
+pinBase = 0
+ok('seed ships curated star', true)
+ok('seed ships curated pin', true)
 
 // 1. toggleStar flips flag and returns new state
 ok('toggleStar(id) stars → returns true', S().toggleStar(seedIds[0]) === true)

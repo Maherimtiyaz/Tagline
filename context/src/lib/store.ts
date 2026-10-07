@@ -598,7 +598,8 @@ export const useAppStore = create<AppState>()(
       source,
       createdAt: Date.now(),
       status: 'raw',
-      suggestions: text.trim() ? analyzeThought(text, get().typeSignals).suggestions : [],
+      /* Phase 38 — guard non-string inputs so a bad caller can't crash capture. */
+      suggestions: typeof text === 'string' && text.trim() ? analyzeThought(text, get().typeSignals).suggestions : [],
       outputs: [],
     }
     const ev: TimelineEvent = {
