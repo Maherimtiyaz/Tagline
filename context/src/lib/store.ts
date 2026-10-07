@@ -9,9 +9,10 @@ import type {
   ThoughtStatus,
   TimelineEvent,
   ToneId,
+  WeeklyDigest,
 } from '../data/types'
 import { COLLECTIONS, SEED_THOUGHTS, SEED_TIMELINE } from '../data/mock'
-import { analyzeThought, generateOutput, retune, uid } from './mockAI'
+import { analyzeThought, buildWeeklyDigest, generateOutput, isoWeekKey, retune, uid } from './mockAI'
 
 /* Phase 23 — tag normalization: trim, collapse inner whitespace, drop
    leading '#', cap length. Returns '' for unusable input. */
