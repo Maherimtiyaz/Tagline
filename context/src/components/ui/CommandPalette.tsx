@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import {
   Archive,
   BarChart3,
+  CalendarRange,
   FileText,
   FolderPlus,
   Hash,
@@ -83,6 +84,19 @@ export function CommandPalette({ onNavigate }: { onNavigate?: (path: string) => 
         useAppStore.getState().resetDemo()
         pushToast('Demo reset to seed data', 'success')
         onNavigate?.('/app')
+      },
+    },
+    /* Phase 40 — weekly digest generator. */
+    {
+      id: 'weekly-digest',
+      label: 'Generate weekly digest',
+      icon: <CalendarRange size={15} />,
+      group: 'Actions',
+      run: () => {
+        const id = useAppStore.getState().generateWeeklyDigest()
+        setOpen(false)
+        if (id) onNavigate?.(`/app/thought/${id}`)
+        else pushToast('Nothing captured this week yet', 'info')
       },
     },
     {

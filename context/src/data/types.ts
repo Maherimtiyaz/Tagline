@@ -2,7 +2,7 @@
    CONTEXT — domain types (shared by mock AI engine + UI)
    ============================================================ */
 
-export type SourceType = 'voice' | 'text' | 'screenshot' | 'import'
+export type SourceType = 'voice' | 'text' | 'screenshot' | 'import' | 'digest'
 
 export type ThoughtStatus = 'raw' | 'processed' | 'archived'
 

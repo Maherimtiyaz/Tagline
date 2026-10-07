@@ -12,8 +12,23 @@ import type {
   TypeSignal,
 } from '../data/types'
 import { COLLECTIONS, SEED_THOUGHTS, SEED_TIMELINE } from '../data/mock'
-import { analyzeThought, clampScore, generateOutput, retune, uid } from './mockAI'
+import { analyzeThought, buildWeeklyDigest, clampScore, generateOutput, retune, uid } from './mockAI'
 import { OUTPUT_TYPES } from './outputMeta'
+
+/* Phase 40 — ISO-8601 week key (e.g. "2026-W40") used to make the weekly
+   digest idempotent within the current week. */
+export function isoWeekKey(ms: number = Date.now()): string {
+  const d = new Date(ms)
+  d.setHours(0, 0, 0, 0)
+  // ISO weekday: Mon=1 .. Sun=7
+  const day = (d.getDay() + 6) % 7
+  d.setDate(d.getDate() - day + 3) // Thursday of this ISO week
+  const firstThu = new Date(d)
+  firstThu.setMonth(0, 4)
+  firstThu.setDate(4 - ((firstThu.getDay() + 6) % 7) + 3)
+  const week = 1 + Math.round((d.getTime() - firstThu.getTime()) / (7 * 86_400_000))
+  return `${d.getFullYear()}-W${String(week).padStart(2, '0')}`
+}
 
 /* Phase 23 — tag normalization: trim, collapse inner whitespace, drop
    leading '#', cap length. Returns '' for unusable input. */
@@ -385,6 +400,13 @@ interface AppState {
   bumpSignal: (type: OutputType, delta: number) => void
   /** Forget everything the engine learned about your preferences. */
   resetSignals: () => void
+
+  /* Phase 40 — weekly digest (spec §21 "weekly summary of what you captured") */
+  /** Roll the last 7 days of activity into a polished digest thought.
+   *  Idempotent within the current ISO week: re-running before Monday
+   *  updates the existing digest row in place instead of spamming the inbox.
+   *  Returns the thought id, or null when there is nothing to summarize. */
+  generateWeeklyDigest: () => string | null
 
   setSearchQuery: (q: string) => void
 
@@ -1138,6 +1160,38 @@ export const useAppStore = create<AppState>()(
   resetSignals: () => {
     set({ typeSignals: [] })
     get().pushToast('Preference learning reset', 'info')
+  },
+
+  generateWeeklyDigest: () => {
+    /* Phase 40 — pure rollup lives in mockAI (buildWeeklyDigest); this action
+       wires it into the world: create-or-update one digest thought, run the
+       real transformation pipeline on its markdown body, and toast. */
+    const digest = buildWeeklyDigest(get().thoughts, get().typeSignals)
+    if (digest.stats.reduce((n, x) => n + x.value, 0) === 0) return null
+
+    const isoWeek = isoWeekKey()
+    const existing = get().thoughts.find(
+      (t) => t.source === 'digest' && t.text.includes(`week:${isoWeek}`),
+    )
+
+    let id: string
+    if (existing) {
+      /* Same-week refresh: rewrite the row in place (updateThoughtText also
+         clears any autosave draft and reseeds suggestions). */
+      get().updateThoughtText(existing.id, `${digest.body}\n\n<!-- digest week:${isoWeek} -->`)
+      id = existing.id
+    } else {
+      id = get().addThought(`${digest.body}\n\n<!-- digest week:${isoWeek} -->`, 'digest')
+    }
+
+    /* Transform through the normal engine so the digest is a first-class
+       output: versions, export, share, feedback all work on it unchanged. */
+    get().transform(id, 'summary', 'professional')
+    get().pushToast(
+      existing ? 'This week\u2019s digest refreshed' : 'Weekly digest created',
+      'success',
+    )
+    return id
   },
 
   saveToCollection: (thoughtId, outputId, collectionName) => {

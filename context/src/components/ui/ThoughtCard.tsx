@@ -1,5 +1,5 @@
 import { useMemo, type ReactNode } from 'react'
-import { Check, Mic, Image as ImageIcon, Type, FileDown, Pin, PinOff, Star } from 'lucide-react'
+import { Check, Mic, Image as ImageIcon, Type, FileDown, Pin, PinOff, Star, CalendarRange } from 'lucide-react'
 import type { SourceType } from '../../data/types'
 import { timeAgo } from '../../hooks/useTransformPipeline'
 import { useAppStore } from '../../lib/store'
@@ -18,6 +18,8 @@ export const SOURCE_META: Record<SourceType, { label: string; icon: ReactNode }>
   text: { label: 'Text', icon: <Type size={12} aria-hidden /> },
   screenshot: { label: 'Screenshot', icon: <ImageIcon size={12} aria-hidden /> },
   import: { label: 'Import', icon: <FileDown size={12} aria-hidden /> },
+  /* Phase 40 — weekly digest rows get their own quiet badge. */
+  digest: { label: 'Digest', icon: <CalendarRange size={12} aria-hidden /> },
 }
 
 export function ThoughtCard({

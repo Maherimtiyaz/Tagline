@@ -2,6 +2,7 @@ import type {
   GeneratedOutput,
   OutputType,
   Suggestion,
+  Thought,
   ToneId,
   TransformResult,
   TypeSignal,
@@ -309,6 +310,150 @@ function clamp(v: number, lo: number, hi: number): number {
 /** Clamp a persisted signal score into the safe learning range. */
 export function clampScore(score: number): number {
   return Number.isFinite(score) ? clamp(score, -3, 3) : 0
+}
+
+/* ============================================================
+   Phase 40 — Weekly digest rollup (spec §21 "a weekly summary of
+   what you captured", §68 "the product learns your preferences").
+
+   Pure + deterministic: given the thought rows and the learned
+   per-type signals, produce a ready-to-render digest. No store or
+   React imports so it stays testable in Node like the rest of the
+   engine.
+   ============================================================ */
+
+export interface DigestStat {
+  label: string
+  value: number
+}
+
+export interface DigestTopType {
+  type: OutputType
+  count: number
+  /** Learned preference score folded into the ranking (Phase 39). */
+  score: number
+}
+
+export interface DigestInsight {
+  tone: 'positive' | 'neutral' | 'warning'
+  text: string
+}
+
+export interface WeeklyDigest {
+  weekOf: string
+  generatedAt: string
+  stats: DigestStat[]
+  topTypes: DigestTopType[]
+  insights: DigestInsight[]
+  /** Polished markdown body — pass straight to generateOutput(text,…). */
+  body: string
+}
+
+const DAY_MS = 86_400_000
+
+/* Thought timestamps are epoch numbers (types.ts); tolerate legacy ISO
+   strings and reject garbage so bad persisted rows never poison windows. */
+function parseWhen(v?: number | string): number | null {
+  if (v === undefined || v === null || v === '') return null
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null
+  const t = Date.parse(v)
+  return Number.isNaN(t) ? null : t
+}
+
+/** Roll learned signals up to one dominant type (ties → higher |score|). */
+export function dominantSignal(signals?: TypeSignal[]): TypeSignal | null {
+  if (!signals || !signals.length) return null
+  const best = [...signals].sort(
+    (a, b) => Math.abs(clampScore(b.score)) - Math.abs(clampScore(a.score)),
+  )[0]
+  return clampScore(best.score) === 0 ? null : best
+}
+
+export function buildWeeklyDigest(
+  thoughts: Thought[],
+  signals?: TypeSignal[],
+  nowMs: number = Date.now(),
+): WeeklyDigest {
+  const weekAgo = nowMs - 7 * DAY_MS
+  const prevWeekAgo = nowMs - 14 * DAY_MS
+
+  /* Week window uses createdAt; missing/garbage timestamps count as
+     "this week" so the digest is never empty for fresh installs. */
+  const whenOf = (t: Thought) => parseWhen(t.createdAt)
+  const inThisWeek = (t: Thought) => {
+    const w = whenOf(t)
+    return w === null ? true : w >= weekAgo
+  }
+  const inPrevWeek = (t: Thought) => {
+    const w = whenOf(t)
+    return w !== null && w >= prevWeekAgo && w < weekAgo
+  }
+
+  const week = thoughts.filter(inThisWeek)
+  const prevCount = thoughts.filter(inPrevWeek).length
+  const rawCount = week.length
+  const processed = week.filter((t) => t.status === 'processed').length
+  const outputs = week.reduce((n, t) => n + (t.outputs?.length ?? 0), 0)
+  const starred = week.filter((t) => t.starred).length
+  const rated = week.flatMap((t) => t.outputs ?? []).filter((o) => o.feedback)
+  const helpful = rated.filter((o) => o.feedback?.rating === 'helpful').length
+
+  /* Top output types across this week's generated outputs. */
+  const typeTally = new Map<OutputType, number>()
+  for (const t of week)
+    for (const o of t.outputs ?? [])
+      typeTally.set(o.type, (typeTally.get(o.type) ?? 0) + 1)
+  const signalOf = (type: OutputType) =>
+    signals?.find((s) => s.type === type)?.score ?? 0
+  const topTypes: DigestTopType[] = [...typeTally.entries()]
+    .map(([type, count]) => ({ type, count, score: clampScore(signalOf(type)) }))
+    .sort((a, b) => b.count - a.count || b.score - a.score)
+    .slice(0, 3)
+
+  const dom = dominantSignal(signals)
+  const insights: DigestInsight[] = []
+  if (rawCount > prevCount && prevCount > 0)
+    insights.push({ tone: 'positive', text: `You captured ${rawCount} thoughts this week — up from ${prevCount} last week.` })
+  else if (rawCount > 0)
+    insights.push({ tone: 'positive', text: `You captured ${rawCount} thought${rawCount === 1 ? '' : 's'} this week.` })
+  if (outputs > 0)
+    insights.push({ tone: 'neutral', text: `${outputs} polished output${outputs === 1 ? '' : 's'} generated (${processed} of ${rawCount} thoughts fully processed).` })
+  if (starred > 0)
+    insights.push({ tone: 'neutral', text: `${starred} thought${starred === 1 ? '' : 's'} starred for follow-up.` })
+  if (dom)
+    insights.push({
+      tone: dom.score > 0 ? 'positive' : 'warning',
+      text: dom.score > 0
+        ? `Your feedback shows you prefer ${OUTPUT_LABEL[dom.type]} output — suggestions are ranked accordingly.`
+        : `You marked several ${OUTPUT_LABEL[dom.type]} outputs "needs work" — that type is ranked lower now.`,
+    })
+  if (rated.length > 0)
+    insights.push({ tone: 'neutral', text: `Feedback quality signal: ${helpful}/${rated.length} rated outputs were "helpful".` })
+  if (insights.length === 0)
+    insights.push({ tone: 'neutral', text: 'Quiet week — nothing captured yet. Drop a rough thought on the home screen to start one.' })
+
+  const lines = [
+    `# Your Context Week`,
+    ``,
+    ...insights.map((i) => `- ${i.text}`),
+    ...(topTypes.length
+      ? [``, `Top output types:`, ...topTypes.map((t) => `- ${OUTPUT_LABEL[t.type]} ×${t.count}`)]
+      : []),
+  ]
+
+  return {
+    weekOf: new Date(weekAgo).toISOString().slice(0, 10),
+    generatedAt: new Date(nowMs).toISOString(),
+    stats: [
+      { label: 'Captured', value: rawCount },
+      { label: 'Processed', value: processed },
+      { label: 'Outputs', value: outputs },
+      { label: 'Starred', value: starred },
+    ],
+    topTypes,
+    insights,
+    body: lines.join('\n'),
+  }
 }
 
 /* Phase 37 — one-line rationales keyed by output type and the signal that

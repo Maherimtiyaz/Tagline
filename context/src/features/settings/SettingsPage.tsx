@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Keyboard, Moon, RotateCcw, Sun } from 'lucide-react'
-import { useAppStore, pullRemoteState } from '../../lib/store'
+import { useAppStore, pullRemoteState, isoWeekKey } from '../../lib/store'
 import { useThemeStore, type Theme } from '../../lib/theme'
 import { SegmentedControl } from '../../components/ui/SegmentedControl'
 import { Kbd } from '../../components/ui/Kbd'
@@ -31,6 +31,8 @@ export function SettingsPage({ inApp = true }: { inApp?: boolean }) {
   /* Phase 39 — learned preference signals (spec §68). */
   const typeSignals = useAppStore((s) => s.typeSignals)
   const resetSignals = useAppStore((s) => s.resetSignals)
+  /* Phase 40 — weekly digest (spec §21). */
+  const generateWeeklyDigest = useAppStore((s) => s.generateWeeklyDigest)
   const navigate = useNavigate()
   const [confirming, setConfirming] = useState(false)
 
@@ -173,6 +175,28 @@ export function SettingsPage({ inApp = true }: { inApp?: boolean }) {
                 )}
               >
                 Reset learned signals
+              </button>
+            </div>
+
+            {/* Phase 40 — weekly digest (spec §21 "a weekly summary of what
+                you captured"). Same-week runs refresh one row, never spam. */}
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
+              <div>
+                <p className="text-sm font-medium">Weekly digest</p>
+                <p className="font-mono text-3xs text-ink-subtle">
+                  Rolls your last 7 days into a polished summary thought · week{' '}
+                  {isoWeekKey()}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const id = generateWeeklyDigest()
+                  if (id) navigate(`/app/thought/${id}`)
+                }}
+                className="rounded-md border border-line px-3 py-1.5 text-xs text-ink-muted transition-colors hover:border-line-strong hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
+              >
+                Generate digest now
               </button>
             </div>
           </div>
