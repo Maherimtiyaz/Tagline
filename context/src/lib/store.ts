@@ -123,8 +123,10 @@ function mergeWithSeeds(persisted?: PersistedShape | null): PersistedShape {
       typeof persisted.demoVisits === 'number' && Number.isFinite(persisted.demoVisits)
         ? Math.max(0, Math.floor(persisted.demoVisits))
         : 0,
-    /* Phase 41: digests ride the same envelope; validated row-by-row. */
-    digests: sanitizeDigests(persisted.digests),
+    /* Phase 41: digests ride the same envelope; validated row-by-row.
+       `|| {}` keeps the merged state's map always defined (never
+       undefined shadowing the store default). */
+    digests: sanitizeDigests(persisted.digests) || {},
   }
 }
 
@@ -445,6 +447,9 @@ export const useAppStore = create<AppState>()(
       digests: {},
 
       /* ---- Phase 41: digest actions (builds on the Phase 40 engine) ---- */
+      /** Generate (or return the existing) digest for the ISO week containing
+       *  `refTs`. Toast + timeline event fire only on first generation —
+       *  repeat calls are pure no-ops returning the stored digest. */
       generateDigest: (refTs?: number) => {
         const now = Date.now()
         const weekKey = isoWeekKey(refTs ?? now)
@@ -466,6 +471,7 @@ export const useAppStore = create<AppState>()(
           ],
         }))
         broadcastDomainChange()
+        get().pushToast(`Weekly digest ready · ${weekKey}`, 'success')
         return { digest, created: true }
       },
 
@@ -622,18 +628,6 @@ export const useAppStore = create<AppState>()(
       showOnboarding: () => set({ onboardingSeen: false }),
       recordDemoVisit: () => set((s) => ({ demoVisits: s.demoVisits + 1 })),
       setSearchQuery: (q) => set({ searchQuery: q }),
-
-      /* ---- Phase 41: digest generation with toast feedback ---- */
-      /** Generate (or return the existing) digest for the ISO week containing
-       *  `refTs`. Toast + timeline event fire only on first generation —
-       *  repeat calls are idempotent no-ops returning the stored digest. */
-      generateDigest: (refTs?: number) => {
-        const res = get().generateDigest(refTs)
-        if (res.created) {
-          get().pushToast(`Weekly digest ready · ${res.digest.weekKey}`, 'success')
-        }
-        return res
-      },
 
       addThought: (text, source = 'text') => {
     const id = uid('th')
@@ -1300,7 +1294,7 @@ export const useAppStore = create<AppState>()(
     } catch {
       /* ignore */
     }
-    set({ ...seedState(), selectedThoughtId: null, selectedIds: [], inboxView: 'inbox' as const, editHistory: {}, userCollections: [], onboardingSeen: true, demoVisits: 0 })
+    set({ ...seedState(), selectedThoughtId: null, selectedIds: [], inboxView: 'inbox' as const, editHistory: {}, userCollections: [], onboardingSeen: true, demoVisits: 0, digests: {} })
     /* Phase 34: abandoned autosave drafts belong to rows that no longer exist. */
     safeStorage.removeItem(DRAFT_KEY)
     /* Phase 31: notify sibling tabs so they re-seed too. */
@@ -1318,6 +1312,8 @@ export const useAppStore = create<AppState>()(
         userCollections: s.userCollections,
         onboardingSeen: s.onboardingSeen,
         demoVisits: s.demoVisits,
+        /* Phase 41: digests survive refresh + cross-tab sync. */
+        digests: s.digests,
       }),
       merge: (persisted, current) => ({
         ...current,

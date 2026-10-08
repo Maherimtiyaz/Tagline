@@ -723,3 +723,19 @@ export function digestToMarkdown(d: WeeklyDigest): string {
   )
   return lines.join('\n')
 }
+
+/** Trigger a `.md` file download for a digest (browser-only; inert in
+ *  Node/tests). Mirrors exporters.downloadExport's blob → anchor flow. */
+export function downloadDigestMarkdown(d: WeeklyDigest): void {
+  if (typeof document === 'undefined' || typeof Blob === 'undefined') return
+  const blob = new Blob([digestToMarkdown(d)], { type: 'text/markdown;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `context-weekly-digest-${d.weekKey}.md`
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  /* Revoke on the next tick so Safari has time to start the download. */
+  window.setTimeout(() => URL.revokeObjectURL(url), 0)
+}
