@@ -138,6 +138,9 @@ export interface Thought {
 
 export type TimelineKind =
   | 'capture'
+  /* Phase 41 — weekly digest generation events render on the
+     global History timeline via this kind. */
+  | 'digest'
   | 'transform'
   | 'tone'
   | 'format'
