@@ -1,8 +1,9 @@
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { BarChart3, Download, GitBranch, Share2, Sparkles, ThumbsDown, ThumbsUp } from 'lucide-react'
+import { BarChart3, CalendarRange, Download, GitBranch, Share2, Sparkles, ThumbsDown, ThumbsUp } from 'lucide-react'
 import type { CountRow } from '../../lib/analytics'
-import { computeInsights, pct } from '../../lib/analytics'
+import { computeInsights, pct, recentDigestStats } from '../../lib/analytics'
+import { formatWeekKey, recentWeekKeys } from '../../lib/mockAI'
 import { SEED_THOUGHTS, SEED_TIMELINE } from '../../data/mock'
 import { useAppStore } from '../../lib/store'
 import { cn } from '../../lib/cn'
@@ -99,6 +100,16 @@ export function InsightsPage() {
   const navigate = useNavigate()
   const stats = useMemo(() => computeInsights(thoughts, timeline), [thoughts, timeline])
 
+  /* Phase 42 — digest coverage strip: which of the last 8 ISO weeks
+     already have a stored recap. Keys come from recentWeekKeys so the
+     rail is newest-first and matches the Digest page's navigation. */
+  const digests = useAppStore((s) => s.digests)
+  const digestStats = useMemo(() => recentDigestStats(digests), [digests])
+  const weekRail = useMemo(() => {
+    const keys = recentWeekKeys(Date.now(), 8)
+    return keys.map((k) => ({ key: k, has: digestStats.hasWeek(k) }))
+  }, [digestStats])
+
   const weekMax = Math.max(...stats.week.map((d) => d.count), 1)
   const sourceMax = Math.max(...stats.bySource.map((r) => r.count), 1)
   const typeMax = Math.max(...stats.byType.map((r) => r.count), 1)
@@ -168,6 +179,55 @@ export function InsightsPage() {
               </div>
             ))}
           </div>
+        </section>
+
+        {/* ---------- Weekly digest coverage (Phase 42) ---------- */}
+        <section aria-label="Weekly digests" className="rounded-lg border border-line bg-surface p-4">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h2 className="label-mono text-ink-subtle">Weekly digests</h2>
+            <button
+              type="button"
+              onClick={() => navigate('/app/digest')}
+              className="rounded-md border border-line px-2.5 py-1 font-mono text-3xs text-ink-muted transition-colors hover:border-accent-line hover:text-ink focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              Open Digest →
+            </button>
+          </div>
+          <div className="flex items-end gap-1.5" role="img" aria-label={`Digest coverage last 8 weeks: ${weekRail.map((w) => `${formatWeekKey(w.key)} ${w.has ? 'generated' : 'missing'}`).join(', ')}`}>
+            {weekRail.map((w, i) => (
+              <div key={w.key} className="flex flex-1 flex-col items-center gap-1">
+                <div
+                  className={cn(
+                    'w-full rounded-sm transition-[height] duration-[var(--duration-base)] animate-fade-up',
+                    w.has ? 'bg-emerald-soft ring-1 ring-emerald' : 'bg-canvas-deep',
+                  )}
+                  style={{ height: `${w.has ? 26 : 10}px`, animationDelay: `${i * 40}ms` }}
+                  title={`${formatWeekKey(w.key)}: ${w.has ? 'digest generated' : 'not generated yet'}`}
+                />
+                <span className={cn('font-mono text-[9px] tabular-nums', w.has ? 'text-ink-muted' : 'text-ink-faint')}>
+                  W{Number(w.key.slice(-2))}
+                </span>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-ink-muted">
+            {digestStats.total === 0 ? (
+              <>No digests yet — generate one from the Digest page to recap any week.</>
+            ) : (
+              <>
+                <span className="inline-flex items-center gap-1 font-medium text-ink">
+                  <CalendarRange size={12} aria-hidden className="text-emerald" />
+                  {digestStats.total} digest{digestStats.total === 1 ? '' : 'es'} ·{' '}
+                  {digestStats.coveredThoughts} thought{digestStats.coveredThoughts === 1 ? '' : 's'} covered
+                </span>
+                {digestStats.lastGeneratedAt !== null && (
+                  <span className="text-ink-faint">
+                    {' '}· last generated {new Date(digestStats.lastGeneratedAt).toLocaleDateString('en-US')}
+                  </span>
+                )}
+              </>
+            )}
+          </p>
         </section>
 
         {/* ---------- Distributions ---------- */}
