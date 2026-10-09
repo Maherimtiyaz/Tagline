@@ -206,3 +206,14 @@ Six defects found & fixed: dead `--duration-normal` token; missing inbox loading
 - ✅ Build clean (✓ 1.40s); lint 0 errors (5 pre-existing warnings); preview sweep all 8 routes → 200
 
 **Files touched:** `src/lib/store.ts`, `src/features/thoughts/ThoughtEditor.tsx`, `qa/phase34-autosave.test.ts`, `PHASES_REPORT.md`
+
+### Phase 41 — Weekly Digest: Export, Week Math & Persistence (extension) ✅ SHIPPED
+- Extends the Phase 40 digest engine with a serialization + navigation layer in `src/lib/mockAI.ts`: `digestToMarkdown` (pure, byte-identical for the same digest — title, italic date range, bold headline, stats row, `##` sections, ISO footer timestamp), `downloadDigestMarkdown` (blob → anchor `.md` download named `context-weekly-digest-<weekKey>.md`, inert outside the browser), plus week helpers `addWeeks` (7-day jumps re-anchored to Monday 00:00 local so DST can't drift the walk), `recentWeekKeys` (newest-first ISO keys, clamps count ≤ 0 to empty) and `formatWeekKey` (`2026-W41` → `Week 41 · 2026`, malformed keys pass through unchanged).
+- Store digests are now first-class domain data: `digests: Record<ISO week, WeeklyDigest>` rides the persisted envelope and the cross-tab broadcast (Phase 31 invariant holds), with new idempotent actions `generateDigest(refTs?)` (returns `{digest, created}`; toast + `'digest'` timeline event only on first generation), `getDigest(weekKey)` and `clearDigest(weekKey)`; `resetDemo` wipes the map.
+- New `sanitizeDigests` runtime validator on every read/merge path: rows are dropped unless `weekKey` matches its map key and all fields type-check (key-mismatch, bad field types, null rows, malformed sections, array-shaped containers) — the demo stays brick-proof against poisoned storage payloads.
+- `TimelineKind` gained `'digest'`; `HistoryPage` renders digest events with a CalendarRange marker. Also fixed a pre-existing build break: `KIND_ICON` was missing the Phase 35 `'lifecycle'` key (now ArrowDown), which had `tsc -b` failing at HEAD before this phase's UI wiring could even compile.
+- ✅ `qa/phase41-digest-export.test.ts`: 57/57 pass (week math incl. re-anchor/idempotency, recentWeekKeys ordering/clamping, formatWeekKey fallbacks, markdown determinism + full structure, generate/get/clear guards, timeline-event-once semantics, persistence round-trip, sanitizer row-by-row drops, resetDemo wipe)
+- ✅ Build clean (`tsc -b && vite build`, ✓ 977ms); lint 0 errors (5 pre-existing warnings); preview sweep all 8 routes → 200
+- ✅ Regression vs recorded baseline: P18 17/17 · P19 22/22 · P21 27/27 · P23 21/21 · P24 16/16 · P28 21/21 · P29 22/22 · P30 35/35 · P31 24/24 · P34 23/23 · P37 14/14; known drift unchanged (P22 16/18 · P25 19/24 · P26 11/19 — stale seeded-starred assumptions from Phase 28 mock-data edits)
+
+**Files touched:** `src/data/types.ts`, `src/lib/mockAI.ts`, `src/lib/store.ts`, `src/features/workspace/HistoryPage.tsx`, `qa/phase41-digest-export.test.ts`, `PHASES_REPORT.md`
