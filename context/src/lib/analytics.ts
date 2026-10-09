@@ -5,7 +5,7 @@
    unit-tested without React or localStorage.
    ============================================================ */
 
-import type { OutputType, Thought, TimelineEvent } from '../data/types'
+import type { OutputType, Thought, TimelineEvent, WeeklyDigest } from '../data/types'
 
 export interface CountRow {
   key: string
@@ -183,4 +183,45 @@ export function computeInsights(
 export function pct(n: number | null): string {
   if (n === null || Number.isNaN(n)) return '—'
   return `${Math.round(n * 100)}%`
+}
+
+/* ============================================================
+   Phase 42 — Recent-digest summary for the Insights dashboard.
+   Pure fold over the store's digests map: no clock reads, no
+   mutation, never throws. The UI derives its own week list via
+   recentWeekKeys(now, N) and calls hasWeek(key) per row, so a
+   digest generated for an older week still shows as generated.
+   ============================================================ */
+
+export interface RecentDigestStats {
+  /** Total digests stored across all weeks. */
+  total: number
+  /** Sum of `captured` across every stored digest. */
+  coveredThoughts: number
+  /** Timestamp of the most recent `generatedAt`, or null when empty. */
+  lastGeneratedAt: number | null
+  /** True when a digest exists for the given ISO week key. */
+  hasWeek: (weekKey: string) => boolean
+}
+
+export function recentDigestStats(
+  digests: Record<string, WeeklyDigest> | undefined | null,
+): RecentDigestStats {
+  const rows = digests && typeof digests === 'object' && !Array.isArray(digests)
+    ? Object.values(digests).filter(
+        (d): d is WeeklyDigest =>
+          !!d && typeof d.weekKey === 'string' && typeof d.captured === 'number',
+      )
+    : []
+  let coveredThoughts = 0
+  let lastGeneratedAt: number | null = null
+  const keys = new Set<string>()
+  for (const d of rows) {
+    coveredThoughts += d.captured
+    keys.add(d.weekKey)
+    if (typeof d.generatedAt === 'number' && (lastGeneratedAt === null || d.generatedAt > lastGeneratedAt)) {
+      lastGeneratedAt = d.generatedAt
+    }
+  }
+  return { total: rows.length, coveredThoughts, lastGeneratedAt, hasWeek: (k) => keys.has(k) }
 }

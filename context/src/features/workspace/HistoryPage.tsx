@@ -14,6 +14,8 @@ import { cn } from '../../lib/cn'
 
 const KIND_ICON: Record<TimelineKind, React.ReactNode> = {
   capture: <GitBranch size={12} aria-hidden />,
+  /* Phase 41 — weekly digest generation events get their own marker. */
+  digest: <CalendarRange size={12} aria-hidden />,
   transform: <SparkleMini />,
   tone: <ArrowRight size={12} aria-hidden />,
   format: <ArrowRight size={12} aria-hidden />,
@@ -21,6 +23,8 @@ const KIND_ICON: Record<TimelineKind, React.ReactNode> = {
   save: <Save size={12} aria-hidden />,
   export: <Download size={12} aria-hidden />,
   archive: <Check size={12} aria-hidden />,
+  /* Phase 35 — draft → ready lifecycle transitions. */
+  lifecycle: <ArrowDown size={12} aria-hidden />,
   version: <History size={12} aria-hidden />,
 }
 
