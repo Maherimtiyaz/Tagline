@@ -724,6 +724,88 @@ export function digestToMarkdown(d: WeeklyDigest): string {
   return lines.join('\n')
 }
 
+/* ============================================================
+   Phase 43 — Digest email rendering + batch generation.
+
+   digestToEmail turns a WeeklyDigest into a plain-text email
+   (subject + body) for the "Email it" affordance. Like its
+   markdown sibling it is pure and deterministic: same digest
+   in → byte-identical strings out (no clock reads, no random).
+   generateDigestBatch walks whole weeks with addWeeks so DST
+   can't drift the sequence, and delegates to the store's
+   idempotent generateDigest — weeks that already exist are
+   returned untouched and never re-toast or re-log.
+   ============================================================ */
+
+export interface DigestEmail {
+  subject: string
+  body: string
+}
+
+const EMAIL_RULE = '─'.repeat(46)
+
+/** Deterministic plain-text email rendering of a digest (Phase 43). */
+export function digestToEmail(d: WeeklyDigest): DigestEmail {
+  const fmtDate = (ts: number) =>
+    new Date(ts).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+  const subject = `Your Context digest — ${formatWeekKey(d.weekKey)}`
+  const lines: string[] = []
+  lines.push('Hi there,')
+  lines.push('')
+  lines.push(`Here's your weekly recap for ${formatWeekKey(d.weekKey)} (${fmtDate(d.from)} – ${fmtDate(d.to)}).`)
+  lines.push('')
+  lines.push(EMAIL_RULE)
+  lines.push(d.headline)
+  lines.push(EMAIL_RULE)
+  lines.push('')
+  lines.push(`Captured:    ${d.captured}`)
+  lines.push(`Transformed: ${d.transformed}`)
+  lines.push(`Exported:    ${d.exported}`)
+  for (const sec of d.sections) {
+    lines.push('')
+    lines.push(sec.heading.toUpperCase())
+    for (const item of sec.items) lines.push(`  • ${item}`)
+  }
+  lines.push('')
+  lines.push(EMAIL_RULE)
+  lines.push('Generated locally by Context — your thoughts never leave this device.')
+  lines.push(new Date(d.generatedAt).toISOString())
+  return { subject, body: lines.join('\n') }
+}
+
+/** Copy a digest email to the clipboard (browser-only; inert in
+ *  Node/tests). Resolves true on success, false on any failure. */
+export async function copyDigestEmail(d: WeeklyDigest): Promise<boolean> {
+  if (typeof navigator === 'undefined' || !navigator.clipboard) return false
+  try {
+    const { subject, body } = digestToEmail(d)
+    await navigator.clipboard.writeText(`Subject: ${subject}\n\n${body}`)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Batch-generate digests for the `count` most recent ISO weeks
+ *  ending at the week containing `refTs` (newest first, hard cap 12).
+ *  Pure week-walk layer: `generate` is injected (the store's idempotent
+ *  generateDigest in production, a spy in tests), so mockAI stays free
+ *  of any store dependency. Returns one result per requested week. */
+export function generateDigestBatch(
+  count: number,
+  refTs: number = Date.now(),
+  generate: (refTs?: number) => { digest: WeeklyDigest; created: boolean },
+): { weekKey: string; digest: WeeklyDigest; created: boolean }[] {
+  const results: { weekKey: string; digest: WeeklyDigest; created: boolean }[] = []
+  const n = Math.max(0, Math.min(Math.floor(count) || 0, 12))
+  for (let i = 0; i < n; i++) {
+    const ts = addWeeks(refTs, -i)
+    const { digest, created } = generate(ts)
+    results.push({ weekKey: digest.weekKey, digest, created })
+  }
+  return results
+}
+
 /** Trigger a `.md` file download for a digest (browser-only; inert in
  *  Node/tests). Mirrors exporters.downloadExport's blob → anchor flow. */
 export function downloadDigestMarkdown(d: WeeklyDigest): void {

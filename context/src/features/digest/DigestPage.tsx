@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { CalendarRange, ChevronLeft, ChevronRight, Download, RotateCcw, Sparkles } from 'lucide-react'
+import { CalendarRange, ChevronLeft, ChevronRight, Download, Layers, MailCheck, RotateCcw, Sparkles } from 'lucide-react'
 import { useAppStore } from '../../lib/store'
 import { cn } from '../../lib/cn'
 import { SEED_THOUGHTS, SEED_TIMELINE } from '../../data/mock'
@@ -7,6 +7,7 @@ import type { Thought, TimelineEvent } from '../../data/types'
 import {
   addWeeks,
   buildWeeklyDigest,
+  copyDigestEmail,
   downloadDigestMarkdown,
   formatWeekKey,
   isoWeekKey,
@@ -60,6 +61,10 @@ export function DigestPage() {
   const digests = useAppStore((s) => s.digests)
   const generateDigest = useAppStore((s) => s.generateDigest)
   const clearDigest = useAppStore((s) => s.clearDigest)
+  /* Phase 43 — batch backfill + email copy. */
+  const generateDigestBatch = useAppStore((s) => s.generateDigestBatch)
+  const pushToast = useAppStore((s) => s.pushToast)
+  const [emailCopied, setEmailCopied] = useState(false)
   const stored = digests[weekKey]
 
   /* Merge seed rows with live store rows exactly like InsightsPage —
@@ -85,6 +90,24 @@ export function DigestPage() {
   const shown = stored ?? preview
   const weeks = useMemo(() => recentWeekKeys(Date.now(), 8), [])
 
+  /* Phase 43 — week key resets whenever the anchor moves, so a stale
+     "copied" flash can never bleed onto a different digest. */
+  const gotoWeek = (updater: (ts: number) => number) => {
+    setAnchorTs(updater)
+    setEmailCopied(false)
+  }
+
+  const handleCopyEmail = async () => {
+    if (!stored) return
+    const ok = await copyDigestEmail(stored)
+    setEmailCopied(ok)
+    pushToast(
+      ok ? `Digest email copied · ${stored.weekKey}` : 'Clipboard unavailable in this browser',
+      ok ? 'success' : 'error',
+    )
+    if (ok) window.setTimeout(() => setEmailCopied(false), 2000)
+  }
+
   return (
     <div className="mx-auto flex h-full w-full max-w-3xl flex-col">
       <header className="flex items-center justify-between gap-3 border-b border-line px-4 py-3 md:px-6">
@@ -99,7 +122,7 @@ export function DigestPage() {
           <button
             type="button"
             aria-label="Previous week"
-            onClick={() => setAnchorTs((ts) => addWeeks(ts, -1))}
+            onClick={() => gotoWeek((ts) => addWeeks(ts, -1))}
             className="rounded-md border border-line p-1.5 text-ink-muted transition-colors hover:border-line-strong hover:text-ink focus-visible:ring-2 focus-visible:ring-accent"
           >
             <ChevronLeft size={15} />
@@ -110,7 +133,7 @@ export function DigestPage() {
           <button
             type="button"
             aria-label="Next week"
-            onClick={() => setAnchorTs((ts) => addWeeks(ts, 1))}
+            onClick={() => gotoWeek((ts) => addWeeks(ts, 1))}
             className="rounded-md border border-line p-1.5 text-ink-muted transition-colors hover:border-line-strong hover:text-ink focus-visible:ring-2 focus-visible:ring-accent"
           >
             <ChevronRight size={15} />
@@ -126,7 +149,7 @@ export function DigestPage() {
               key={k}
               type="button"
               aria-current={k === weekKey ? 'true' : undefined}
-              onClick={() => setAnchorTs(weekStartFromKey(k))}
+              onClick={() => gotoWeek(() => weekStartFromKey(k))}
               className={cn(
                 'rounded-full border px-3 py-1 font-mono text-3xs transition-colors focus-visible:ring-2 focus-visible:ring-accent',
                 k === weekKey
@@ -192,6 +215,17 @@ export function DigestPage() {
                 >
                   <Download size={13} /> Download .md
                 </button>
+                {/* Phase 43 — copy the deterministic email rendering of this
+                    digest to the clipboard (subject + plain-text body). */}
+                <button
+                  type="button"
+                  aria-label="Copy digest as email to clipboard"
+                  onClick={handleCopyEmail}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs text-ink-muted transition-colors hover:border-line-strong hover:text-ink focus-visible:ring-2 focus-visible:ring-accent"
+                >
+                  {emailCopied ? <MailCheck size={13} className="text-emerald" /> : <Sparkles size={13} />}
+                  {emailCopied ? 'Copied!' : 'Copy as email'}
+                </button>
                 <button
                   type="button"
                   onClick={() => clearDigest(weekKey)}
@@ -207,6 +241,15 @@ export function DigestPage() {
                 className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-canvas transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-accent"
               >
                 <Sparkles size={13} /> Generate this week
+              </button>
+              /* Phase 43 — backfill last 4 weeks in one click; existing weeks are no-ops. */
+              <button
+                type="button"
+                aria-label="Backfill digests for the last four weeks"
+                onClick={() => generateDigestBatch(4, anchorTs)}
+                className="inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs text-ink-muted transition-colors hover:border-line-strong hover:text-ink focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                <Layers size={13} /> Backfill last 4 weeks
               </button>
             )}
             <span className="ml-auto inline-flex items-center gap-1 font-mono text-3xs text-ink-faint">

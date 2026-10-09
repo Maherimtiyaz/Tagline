@@ -12,7 +12,16 @@ import type {
   WeeklyDigest,
 } from '../data/types'
 import { COLLECTIONS, SEED_THOUGHTS, SEED_TIMELINE } from '../data/mock'
-import { analyzeThought, buildWeeklyDigest, generateOutput, isoWeekKey, retune, uid } from './mockAI'
+import {
+  addWeeks,
+  analyzeThought,
+  buildWeeklyDigest,
+  digestToEmail,
+  generateOutput,
+  isoWeekKey,
+  retune,
+  uid,
+} from './mockAI'
 
 /* Phase 23 — tag normalization: trim, collapse inner whitespace, drop
    leading '#', cap length. Returns '' for unusable input. */
@@ -404,6 +413,13 @@ interface AppState {
   getDigest: (weekKey: string) => WeeklyDigest | undefined
   /** Drop one stored digest so the week can be regenerated fresh. */
   clearDigest: (weekKey: string) => boolean
+  /** Phase 43 — backfill digests for the `count` most recent ISO weeks
+   *  ending at `refTs`'s week (newest first, capped at 12). Idempotent per
+   *  week; a single summary toast reports how many were newly created. */
+  generateDigestBatch: (count: number, refTs?: number) => { created: number; total: number }
+  /** Phase 43 — deterministic email rendering of a STORED digest ('' or
+   *  unknown week → null). Never generates as a side effect. */
+  getDigestEmail: (weekKey: string) => { subject: string; body: string } | null
 
   setSearchQuery: (q: string) => void
 
@@ -486,6 +502,35 @@ export const useAppStore = create<AppState>()(
         })
         broadcastDomainChange()
         return true
+      },
+
+      /* ---- Phase 43: batch backfill + email rendering ---- */
+      /** Backfill the `count` most recent ISO weeks ending at `refTs`'s
+       *  week (newest first, hard cap 12). Reuses generateDigest per week,
+       *  so existing weeks are untouched no-ops. One summary toast only —
+       *  and none at all when nothing new was created. */
+      generateDigestBatch: (count, refTs) => {
+        const base = refTs ?? Date.now()
+        const n = Math.max(0, Math.min(Math.floor(count) || 0, 12))
+        let created = 0
+        for (let i = 0; i < n; i++) {
+          if (get().generateDigest(addWeeks(base, -i)).created) created++
+        }
+        const total = Object.keys(get().digests).length
+        if (created > 0) {
+          get().pushToast(
+            `Backfilled ${created} digest${created === 1 ? '' : 's'} · ${total} stored`,
+            'success',
+          )
+        }
+        return { created, total }
+      },
+
+      /** Email view of a STORED digest; null for unknown/empty keys.
+       *  Never generates as a side effect — previews stay local-only. */
+      getDigestEmail: (weekKey) => {
+        const d = weekKey ? get().digests[weekKey] : undefined
+        return d ? digestToEmail(d) : null
       },
 
       select: (id) => set({ selectedThoughtId: id }),
