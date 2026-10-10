@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
-import { CalendarRange, ChevronLeft, ChevronRight, Download, Layers, MailCheck, RotateCcw, Sparkles } from 'lucide-react'
+import { ArrowDown, ArrowUpRight, CalendarRange, ChevronLeft, ChevronRight, Download, Layers, MailCheck, Minus, RotateCcw, Sparkles } from 'lucide-react'
 import { useAppStore } from '../../lib/store'
 import { cn } from '../../lib/cn'
 import { SEED_THOUGHTS, SEED_TIMELINE } from '../../data/mock'
 import type { Thought, TimelineEvent } from '../../data/types'
+import type { DigestStatDelta } from '../../lib/analytics'
 import {
   addWeeks,
   buildWeeklyDigest,
@@ -51,6 +52,27 @@ export function weekStartFromKey(weekKey: string, now = Date.now()): number {
 const fmtDay = (ts: number) =>
   new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 
+/* Phase 44 — signed delta chip for the week-over-week strip. */
+function DeltaChip({ label, d }: { label: string; d: DigestStatDelta }) {
+  const up = d.delta > 0
+  const flat = d.delta === 0
+  return (
+    <span className="inline-flex items-center gap-1 font-mono text-3xs tabular-nums">
+      <span className="text-ink-faint">{label}</span>
+      {flat ? (
+        <Minus size={10} className="text-ink-faint" aria-label="no change" />
+      ) : up ? (
+        <ArrowUpRight size={10} className="text-emerald" aria-label="increase" />
+      ) : (
+        <ArrowDown size={10} className="text-coral" aria-label="decrease" />
+      )}
+      <span className={cn('font-medium', flat ? 'text-ink-muted' : up ? 'text-emerald' : 'text-coral')}>
+        {up ? `+${d.delta}` : d.delta}
+      </span>
+    </span>
+  )
+}
+
 export function DigestPage() {
   /* Anchor starts at "now"; navigation moves it whole weeks only. */
   const [anchorTs, setAnchorTs] = useState(() => Date.now())
@@ -63,9 +85,16 @@ export function DigestPage() {
   const clearDigest = useAppStore((s) => s.clearDigest)
   /* Phase 43 — batch backfill + email copy. */
   const generateDigestBatch = useAppStore((s) => s.generateDigestBatch)
+  /* Phase 44 — week-over-week comparison (pure read over stored digests). */
+  const compareDigest = useAppStore((s) => s.compareDigest)
   const pushToast = useAppStore((s) => s.pushToast)
   const [emailCopied, setEmailCopied] = useState(false)
   const stored = digests[weekKey]
+
+  const comparison = useMemo(
+    () => (stored ? compareDigest(weekKey) : null),
+    [stored, weekKey, compareDigest],
+  )
 
   /* Merge seed rows with live store rows exactly like InsightsPage —
      store rehydration dedupes seeds by id, so this is the full truth. */
@@ -187,6 +216,30 @@ export function DigestPage() {
           <p className="mb-4 font-mono text-3xs tabular-nums text-ink-subtle">
             Captured {shown.captured} · Transformed {shown.transformed} · Exported {shown.exported}
           </p>
+          {/* Phase 44 — week-over-week strip (stored digests only; the
+              preview has no frozen baseline to compare against). */}
+          {stored && (
+            <div
+              className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-md border border-line bg-canvas px-3 py-2"
+              aria-label="Week over week comparison"
+            >
+              <span className="label-mono text-ink-faint">vs previous</span>
+              {comparison ? (
+                <>
+                  <DeltaChip label="captured" d={comparison.captured} />
+                  <DeltaChip label="transformed" d={comparison.transformed} />
+                  <DeltaChip label="exported" d={comparison.exported} />
+                  <span className="font-mono text-3xs text-ink-faint">
+                    vs {formatWeekKey(comparison.prevWeekKey)}
+                  </span>
+                </>
+              ) : (
+                <span className="font-mono text-3xs text-ink-faint">
+                  no earlier digest stored — backfill a week to compare
+                </span>
+              )}
+            </div>
+          )}
           {!stored && (
             <p className="mb-3 rounded-md border border-dashed border-line px-3 py-2 text-3xs text-ink-faint">
               Preview — computed live from your data. Generate to freeze this week&apos;s recap.

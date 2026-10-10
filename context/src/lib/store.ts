@@ -12,6 +12,8 @@ import type {
   WeeklyDigest,
 } from '../data/types'
 import { COLLECTIONS, SEED_THOUGHTS, SEED_TIMELINE } from '../data/mock'
+import type { DigestComparison } from './analytics'
+import { compareDigestWeeks } from './analytics'
 import {
   addWeeks,
   analyzeThought,
@@ -420,6 +422,11 @@ interface AppState {
   /** Phase 43 — deterministic email rendering of a STORED digest ('' or
    *  unknown week → null). Never generates as a side effect. */
   getDigestEmail: (weekKey: string) => { subject: string; body: string } | null
+  /** Phase 44 — week-over-week diff of two stored digests. Compares the
+   *  given week against `prevKey` when provided, otherwise the closest
+   *  earlier stored week. Null when either side is missing/invalid —
+   *  pure read, never generates or toasts. */
+  compareDigest: (weekKey: string, prevKey?: string) => DigestComparison | null
 
   setSearchQuery: (q: string) => void
 
@@ -532,6 +539,12 @@ export const useAppStore = create<AppState>()(
         const d = weekKey ? get().digests[weekKey] : undefined
         return d ? digestToEmail(d) : null
       },
+
+      /** Phase 44 — pure week-over-week diff over the stored digest map.
+       *  Delegates all logic to analytics.compareDigestWeeks so the fold
+       *  stays UI-free and unit-testable; no generation, no toast. */
+      compareDigest: (weekKey, prevKey) =>
+        compareDigestWeeks(get().digests, weekKey, prevKey),
 
       select: (id) => set({ selectedThoughtId: id }),
 

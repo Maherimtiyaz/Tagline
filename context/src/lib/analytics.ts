@@ -225,3 +225,88 @@ export function recentDigestStats(
   }
   return { total: rows.length, coveredThoughts, lastGeneratedAt, hasWeek: (k) => keys.has(k) }
 }
+
+/* ============================================================
+   Phase 44 — Week-over-week digest comparison (pure fold).
+
+   compareDigestWeeks aligns two WeeklyDigests by their ISO week
+   keys and diffs the headline stats. The older week is resolved
+   deterministically: explicit `prevKey` wins; otherwise the row
+   with the lexicographically-smallest weekKey below the current
+   one (ISO keys sort chronologically). Returns null when either
+   side is missing or malformed — callers render a "no prior
+   digest" state instead of guessing. Delta sign convention:
+   positive = growth vs the previous week; zero delta on absent
+   prev fields counts as flat (0), never NaN.
+   ============================================================ */
+
+export interface DigestStatDelta {
+  /** Signed change current − previous. */
+  delta: number
+  current: number
+  previous: number
+}
+
+export interface DigestComparison {
+  weekKey: string
+  prevWeekKey: string
+  captured: DigestStatDelta
+  transformed: DigestStatDelta
+  exported: DigestStatDelta
+  /** Total section-item count difference (content volume proxy). */
+  items: DigestStatDelta
+  /** True when the current digest covers strictly more thoughts. */
+  busier: boolean
+}
+
+const digestNum = (v: unknown): number | null =>
+  typeof v === 'number' && Number.isFinite(v) ? v : null
+
+/** Pure week-over-week diff of two stored digests; null when the
+ *  current digest is invalid or no comparable earlier week exists. */
+export function compareDigestWeeks(
+  digests: Record<string, WeeklyDigest> | undefined | null,
+  weekKey: string,
+  prevKey?: string,
+): DigestComparison | null {
+  if (!digests || typeof digests !== 'object' || Array.isArray(digests)) return null
+  const cur = digests[weekKey]
+  if (!cur || typeof cur.weekKey !== 'string' || !weekKey) return null
+
+  /* Resolve the previous week: explicit key first, else the closest
+     stored week that sorts before the current one. */
+  let prev: WeeklyDigest | undefined
+  if (prevKey && prevKey !== weekKey) prev = digests[prevKey]
+  if (!prev) {
+    const candidates = Object.values(digests).filter(
+      (d): d is WeeklyDigest => !!d && typeof d.weekKey === 'string' && d.weekKey < weekKey,
+    )
+    candidates.sort((a, b) => (a.weekKey < b.weekKey ? -1 : 1))
+    prev = candidates[candidates.length - 1]
+  }
+  if (!prev || prev.weekKey === weekKey) return null
+
+  const field = (key: 'captured' | 'transformed' | 'exported'): DigestStatDelta | null => {
+    const c = digestNum(cur[key])
+    const p = digestNum(prev![key])
+    return c === null || p === null ? null : { delta: c - p, current: c, previous: p }
+  }
+  const captured = field('captured')
+  const transformed = field('transformed')
+  const exported = field('exported')
+  if (!captured || !transformed || !exported) return null
+
+  const itemCount = (d: WeeklyDigest) =>
+    Array.isArray(d.sections) ? d.sections.reduce((n, s) => n + (Array.isArray(s?.items) ? s.items.length : 0), 0) : 0
+  const items: DigestStatDelta = { delta: itemCount(cur) - itemCount(prev), current: itemCount(cur), previous: itemCount(prev) }
+
+  return {
+    weekKey,
+    prevWeekKey: prev.weekKey,
+    captured,
+    transformed,
+    exported,
+    items,
+    busier: captured.current > captured.previous,
+  }
+}
