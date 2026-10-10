@@ -235,22 +235,24 @@ export function DigestPage() {
                 </button>
               </>
             ) : (
-              <button
-                type="button"
-                onClick={() => generateDigest(anchorTs)}
-                className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-canvas transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-accent"
-              >
-                <Sparkles size={13} /> Generate this week
-              </button>
-              /* Phase 43 — backfill last 4 weeks in one click; existing weeks are no-ops. */
-              <button
-                type="button"
-                aria-label="Backfill digests for the last four weeks"
-                onClick={() => generateDigestBatch(4, anchorTs)}
-                className="inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs text-ink-muted transition-colors hover:border-line-strong hover:text-ink focus-visible:ring-2 focus-visible:ring-accent"
-              >
-                <Layers size={13} /> Backfill last 4 weeks
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => generateDigest(anchorTs)}
+                  className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-canvas transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-accent"
+                >
+                  <Sparkles size={13} /> Generate this week
+                </button>
+                {/* Phase 43 — backfill last 4 weeks in one click; existing weeks are no-ops. */}
+                <button
+                  type="button"
+                  aria-label="Backfill digests for the last four weeks"
+                  onClick={() => generateDigestBatch(4, anchorTs)}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs text-ink-muted transition-colors hover:border-line-strong hover:text-ink focus-visible:ring-2 focus-visible:ring-accent"
+                >
+                  <Layers size={13} /> Backfill last 4 weeks
+                </button>
+              </>
             )}
             <span className="ml-auto inline-flex items-center gap-1 font-mono text-3xs text-ink-faint">
               <CalendarRange size={11} aria-hidden /> stored under {weekKey}
