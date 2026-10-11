@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import type {
   Collection,
+  DigestRule,
   GeneratedOutput,
   OutputType,
   OutputVersion,
@@ -18,11 +19,13 @@ import {
   addWeeks,
   analyzeThought,
   buildWeeklyDigest,
+  digestRuleMatches,
   digestToEmail,
   generateOutput,
   isoWeekKey,
   retune,
   uid,
+  weekBounds,
 } from './mockAI'
 
 /* Phase 23 — tag normalization: trim, collapse inner whitespace, drop
@@ -79,6 +82,68 @@ interface PersistedShape {
   demoVisits?: number
   /** Phase 40/41 — generated weekly digests keyed by ISO week (`YYYY-Www`). */
   digests?: Record<string, WeeklyDigest>
+  /** Phase 45 — digest personalization rules (ordered, newest last). */
+  digestRules?: DigestRule[]
+}
+
+const RULE_SOURCES = new Set(['voice', 'text', 'screenshot', 'import'])
+
+/** Phase 45 — runtime validation of one persisted/broadcast rule row.
+ *  A rule must carry a valid id/label and at least one real criterion;
+ *  unknown fields are dropped, malformed rows rejected (never throws). */
+function sanitizeDigestRule(raw: unknown): DigestRule | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const r = raw as Partial<DigestRule>
+  if (typeof r.id !== 'string' || !r.id || typeof r.label !== 'string') return null
+  const out: DigestRule = {
+    id: r.id.slice(0, 64),
+    label: r.label.trim().slice(0, 60) || 'Untitled rule',
+    createdAt: typeof r.createdAt === 'number' && Number.isFinite(r.createdAt) ? r.createdAt : 0,
+    enabled: r.enabled === true,
+  }
+  if (Array.isArray(r.requireTags)) {
+    const tags = r.requireTags
+      .filter((t): t is string => typeof t === 'string')
+      .map((t) => normalizeTag(t))
+      .filter(Boolean)
+      .slice(0, 8)
+    if (tags.length > 0) out.requireTags = [...new Set(tags)]
+  }
+  if (Array.isArray(r.sources)) {
+    const srcs = (r.sources as unknown[]).filter((s) => typeof s === 'string' && RULE_SOURCES.has(s))
+    if (srcs.length > 0) out.sources = [...new Set(srcs)] as DigestRule['sources']
+  }
+  if (typeof r.minConfidence === 'number' && Number.isFinite(r.minConfidence) && r.minConfidence > 0) {
+    out.minConfidence = Math.min(1, r.minConfidence)
+  }
+  if (r.starredOnly === true) out.starredOnly = true
+  if (r.onlyTransformed === true) out.onlyTransformed = true
+  if (r.excludeArchived === true) out.excludeArchived = true
+  /* Rows with zero criteria would silently empty every recap — drop them. */
+  const hasCriterion =
+    out.requireTags !== undefined ||
+    out.sources !== undefined ||
+    out.minConfidence !== undefined ||
+    out.starredOnly === true ||
+    out.onlyTransformed === true ||
+    out.excludeArchived === true
+  return hasCriterion ? out : null
+}
+
+/** Phase 45 — validate a persisted/broadcast rule list; dedupes ids,
+ *  caps at 12 rules (creation order preserved). */
+function sanitizeDigestRules(raw: unknown): DigestRule[] {
+  if (!Array.isArray(raw)) return []
+  const seen = new Set<string>()
+  const out: DigestRule[] = []
+  for (const row of raw) {
+    const r = sanitizeDigestRule(row)
+    if (!r || seen.has(r.id)) continue
+    seen.add(r.id)
+    out.push(r)
+    if (out.length >= 12) break
+  }
+  return out
 }
 
 /** Phase 41 — runtime validation of a persisted/broadcast digest map.
@@ -138,6 +203,8 @@ function mergeWithSeeds(persisted?: PersistedShape | null): PersistedShape {
        `|| {}` keeps the merged state's map always defined (never
        undefined shadowing the store default). */
     digests: sanitizeDigests(persisted.digests) || {},
+    /* Phase 45: personalization rules — validated list, deduped by id. */
+    digestRules: sanitizeDigestRules(persisted.digestRules),
   }
 }
 
@@ -428,6 +495,30 @@ interface AppState {
    *  pure read, never generates or toasts. */
   compareDigest: (weekKey: string, prevKey?: string) => DigestComparison | null
 
+  /* ---- Phase 45: digest personalization rules ---- */
+  /** Ordered list of user rules shaping future digest generations. */
+  digestRules: DigestRule[]
+  /** Add a rule from partial input. Requires a non-empty label AND at
+   *  least one real criterion; invalid additions toast an error and
+   *  return null. New rules start enabled; cap 12 (oldest dropped). */
+  addDigestRule: (input: {
+    label: string
+    requireTags?: string[]
+    sources?: DigestRule['sources']
+    minConfidence?: number
+    starredOnly?: boolean
+    onlyTransformed?: boolean
+    excludeArchived?: boolean
+  }) => DigestRule | null
+  /** Flip a rule's enabled flag (unknown id → false, silent). */
+  toggleDigestRule: (id: string) => boolean
+  /** Remove one rule (unknown id → false). Stored digests are frozen
+   *  snapshots and stay untouched — only FUTURE generations change. */
+  removeDigestRule: (id: string) => boolean
+  /** How many of this week's captures the currently-enabled rules keep
+   *  (0 enabled → all). Pure preview count, no state writes. */
+  matchCountForWeek: (refTs?: number) => { matched: number; total: number }
+
   setSearchQuery: (q: string) => void
 
   pushToast: (
@@ -445,6 +536,8 @@ const seedState = () => ({
   userCollections: [] as Collection[],
   /* Phase 41: digests start empty — they are generated on demand. */
   digests: {} as Record<string, WeeklyDigest>,
+  /* Phase 45: personalization rules start empty — everything matches. */
+  digestRules: [] as DigestRule[],
 })
 
 /** Deterministic palette rotation for user-created collections. */
@@ -468,17 +561,27 @@ export const useAppStore = create<AppState>()(
       onboardingSeen: false,
       demoVisits: 0,
       digests: {},
+      digestRules: [],
 
       /* ---- Phase 41: digest actions (builds on the Phase 40 engine) ---- */
       /** Generate (or return the existing) digest for the ISO week containing
        *  `refTs`. Toast + timeline event fire only on first generation —
-       *  repeat calls are pure no-ops returning the stored digest. */
+       *  repeat calls are pure no-ops returning the stored digest.
+       *  Phase 45: enabled personalization rules filter this week's captures
+       *  before aggregation; the frozen digest records which rule ids shaped
+       *  it (`appliedRuleIds`) so old snapshots never silently change. */
       generateDigest: (refTs?: number) => {
         const now = Date.now()
         const weekKey = isoWeekKey(refTs ?? now)
         const existing = get().digests[weekKey]
         if (existing) return { digest: existing, created: false }
-        const digest = buildWeeklyDigest(refTs ?? now, get().thoughts, get().timeline, now)
+        const digest = buildWeeklyDigest(
+          refTs ?? now,
+          get().thoughts,
+          get().timeline,
+          now,
+          get().digestRules,
+        )
         set((s) => ({
           digests: { ...s.digests, [weekKey]: digest },
           timeline: [
@@ -545,6 +648,81 @@ export const useAppStore = create<AppState>()(
        *  stays UI-free and unit-testable; no generation, no toast. */
       compareDigest: (weekKey, prevKey) =>
         compareDigestWeeks(get().digests, weekKey, prevKey),
+
+      /* ---- Phase 45: digest personalization rule actions ---- */
+      addDigestRule: (input) => {
+        const label = (input?.label ?? '').trim().slice(0, 60)
+        if (!label) {
+          get().pushToast('Rule needs a name', 'error')
+          return null
+        }
+        const requireTags = [
+          ...new Set((Array.isArray(input.requireTags) ? input.requireTags : []).map(normalizeTag).filter(Boolean)),
+        ].slice(0, 8)
+        const sources = (Array.isArray(input.sources) ? input.sources : []).filter(
+          (s): s is NonNullable<DigestRule['sources']>[number] =>
+            s === 'voice' || s === 'text' || s === 'screenshot' || s === 'import',
+        )
+        const minConfidence =
+          typeof input.minConfidence === 'number' && Number.isFinite(input.minConfidence) && input.minConfidence > 0
+            ? Math.min(1, input.minConfidence)
+            : undefined
+        const draft: DigestRule = {
+          id: uid('dr'),
+          label,
+          createdAt: Date.now(),
+          enabled: true,
+          ...(requireTags.length > 0 ? { requireTags } : {}),
+          ...(sources.length > 0 ? { sources: [...new Set(sources)] } : {}),
+          ...(minConfidence !== undefined ? { minConfidence } : {}),
+          ...(input.starredOnly === true ? { starredOnly: true } : {}),
+          ...(input.onlyTransformed === true ? { onlyTransformed: true } : {}),
+          ...(input.excludeArchived === true ? { excludeArchived: true } : {}),
+        }
+        /* A criterion-less rule would filter EVERYTHING out of future
+           recaps — refuse it loudly instead of silently bricking digests. */
+        const hasCriterion =
+          requireTags.length > 0 ||
+          sources.length > 0 ||
+          minConfidence !== undefined ||
+          draft.starredOnly === true ||
+          draft.onlyTransformed === true ||
+          draft.excludeArchived === true
+        if (!hasCriterion) {
+          get().pushToast('Rule needs at least one criterion', 'error')
+          return null
+        }
+        set((s) => ({ digestRules: [...s.digestRules, draft].slice(-12) }))
+        broadcastDomainChange()
+        get().pushToast(`Digest rule added · ${label}`, 'success')
+        return draft
+      },
+
+      toggleDigestRule: (id) => {
+        const rule = get().digestRules.find((r) => r.id === id)
+        if (!rule) return false
+        set((s) => ({
+          digestRules: s.digestRules.map((r) => (r.id === id ? { ...r, enabled: !r.enabled } : r)),
+        }))
+        broadcastDomainChange()
+        return true
+      },
+
+      removeDigestRule: (id) => {
+        if (!get().digestRules.some((r) => r.id === id)) return false
+        set((s) => ({ digestRules: s.digestRules.filter((r) => r.id !== id) }))
+        broadcastDomainChange()
+        return true
+      },
+
+      matchCountForWeek: (refTs) => {
+        const now = refTs ?? Date.now()
+        const { from, to } = weekBounds(now)
+        const wk = get().thoughts.filter((t) => t && t.createdAt >= from && t.createdAt <= to)
+        const active = get().digestRules.filter((r) => r.enabled)
+        if (active.length === 0) return { matched: wk.length, total: wk.length }
+        return { matched: wk.filter((t) => active.some((r) => digestRuleMatches(r, t))).length, total: wk.length }
+      },
 
       select: (id) => set({ selectedThoughtId: id }),
 
