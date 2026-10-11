@@ -1,4 +1,5 @@
 import type {
+  DigestRule,
   DigestSection,
   GeneratedOutput,
   OutputType,
@@ -555,18 +556,30 @@ function digestSentence(text: string): string {
 }
 
 /** Deterministic weekly recap. Pure: never touches Date.now() unless
- *  `now` is omitted, never mutates its inputs, never throws. */
+ *  `now` is omitted, never mutates its inputs, never throws.
+ *  Phase 45 — optional `rules`: enabled personalization rules are
+ *  OR-combined over the week's captures (a capture survives if ANY
+ *  rule matches it). Omitted/empty → no filtering and NO
+ *  appliedRuleIds key, so output stays byte-identical to pre-P45. */
 export function buildWeeklyDigest(
   refTs: number,
   thoughts: Thought[],
   timeline: TimelineEvent[],
   now?: number,
+  rules?: DigestRule[],
 ): WeeklyDigest {
   const { from, to } = weekBounds(refTs)
   const inRange = (t: number) => t >= from && t <= to
-  const wkThoughts = thoughts
+  const activeRules = Array.isArray(rules) ? rules.filter((r) => r && r.enabled === true) : []
+  const wkThoughtsAll = thoughts
     .filter((t) => t && inRange(t.createdAt))
     .sort((a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : 1))
+  /* Rules act on captures only; timeline events (exports etc.) stay
+     global so the exported stat keeps reflecting real activity. */
+  const wkThoughts =
+    activeRules.length === 0
+      ? wkThoughtsAll
+      : wkThoughtsAll.filter((t) => activeRules.some((r) => digestRuleMatches(r, t)))
   const wkEvents = timeline
     .filter((e) => e && inRange(e.at))
     .sort((a, b) => a.at - b.at || (a.id < b.id ? -1 : 1))
@@ -641,7 +654,9 @@ export function buildWeeklyDigest(
 
   const headline =
     wkThoughts.length === 0
-      ? `A quiet week · ${fmtDate(from)}–${fmtDate(to)}`
+      ? activeRules.length > 0 && wkThoughtsAll.length > 0
+        ? `Nothing matched your rules · ${fmtDate(from)}–${fmtDate(to)}`
+        : `A quiet week · ${fmtDate(from)}–${fmtDate(to)}`
       : `${wkThoughts.length} capture${wkThoughts.length === 1 ? '' : 's'} · ${transformed} turned into documents · ${exported} export${exported === 1 ? '' : 's'}`
 
   return {
@@ -654,7 +669,80 @@ export function buildWeeklyDigest(
     transformed,
     exported,
     sections,
+    /* Phase 45 — provenance only when rules actually shaped the recap;
+       absent otherwise so pre-P45 digests stay byte-identical. */
+    ...(activeRules.length > 0 ? { appliedRuleIds: [...new Set(wkThoughts.flatMap((t) => activeRules.filter((r) => digestRuleMatches(r, t)).map((r) => r.id)))].sort() } : {}),
   }
+}
+
+/* ============================================================
+   Phase 45 — Digest personalization rules (pure matching).
+
+   A rule is a conjunction of optional predicates; ALL present
+   predicates must hold for a thought to match. Multiple enabled
+   rules are OR-combined by buildWeeklyDigest. Matching never
+   throws and treats malformed rule fields as "not specified".
+   ============================================================ */
+
+/** Normalized tag set of a thought (same semantics as P23/P24: trim,
+ *  drop leading '#', collapse spaces, lowercase). */
+function thoughtTagSet(t: Thought): Set<string> {
+  const s = new Set<string>()
+  for (const raw of t.tags ?? []) {
+    const tag = String(raw).trim().replace(/^#+/, '').replace(/\s+/g, ' ').toLowerCase()
+    if (tag) s.add(tag)
+  }
+  return s
+}
+
+/** True when every predicate carried by `rule` holds for thought `t`.
+ *  An empty rule (no predicates at all) matches nothing — it would be
+ *  a silent data-loss footgun; the store rejects such rules anyway. */
+export function digestRuleMatches(rule: DigestRule, t: Thought): boolean {
+  if (!rule || !t) return false
+  let hasPredicate = false
+
+  const tags = Array.isArray(rule.requireTags)
+    ? rule.requireTags.map((x) => String(x).trim().replace(/^#+/, '').replace(/\s+/g, ' ').toLowerCase()).filter(Boolean)
+    : []
+  if (tags.length > 0) {
+    hasPredicate = true
+    const tTags = thoughtTagSet(t)
+    if (!tags.every((tag) => tTags.has(tag))) return false
+  }
+
+  const sources = Array.isArray(rule.sources)
+    ? rule.sources.filter((s) => s === 'voice' || s === 'text' || s === 'screenshot' || s === 'import')
+    : []
+  if (sources.length > 0) {
+    hasPredicate = true
+    if (!sources.includes(t.source)) return false
+  }
+
+  if (typeof rule.minConfidence === 'number' && Number.isFinite(rule.minConfidence) && rule.minConfidence > 0) {
+    hasPredicate = true
+    /* Confidence proxy: the engine's top suggestion for a transform is
+       ranked at ~0.95 confidence, so any capture that HAS outputs counts
+       as confidently understood; raw captures never clear the bar. */
+    if (!(Array.isArray(t.outputs) && t.outputs.length > 0)) return false
+  }
+
+  if (rule.starredOnly === true) {
+    hasPredicate = true
+    if (t.starred !== true) return false
+  }
+
+  if (rule.onlyTransformed === true) {
+    hasPredicate = true
+    if (!(Array.isArray(t.outputs) && t.outputs.length > 0)) return false
+  }
+
+  if (rule.excludeArchived === true) {
+    hasPredicate = true
+    if (t.status === 'archived') return false
+  }
+
+  return hasPredicate
 }
 
 /* ============================================================

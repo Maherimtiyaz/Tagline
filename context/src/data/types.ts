@@ -113,6 +113,41 @@ export interface WeeklyDigest {
   transformed: number
   exported: number
   sections: DigestSection[]
+  /** Phase 45 — personalization rules that were ACTIVE when this recap
+   *  was frozen. Absent on digests generated before Phase 45; a digest
+   *  carrying rules shows which filters shaped it (and can be rebuilt
+   *  under the current rules via Clear & regenerate). */
+  appliedRuleIds?: string[]
+}
+
+/** Phase 45 — one digest personalization rule. Rules filter which of
+ *  the week's captures make it into the recap BEFORE any aggregation,
+ *  so headline/stats/sections all reflect the personalized subset.
+ *  A rule is a conjunction of its optional predicates (ALL present
+ *  ones must hold); enabled rules are OR-combined across captures.
+ *  The store requires at least one criterion per rule. */
+export interface DigestRule {
+  /** Stable id (`dr-…` via uid). */
+  id: string
+  /** Short user-facing name, e.g. "Voice notes only". */
+  label: string
+  createdAt: number
+  enabled: boolean
+  /** When non-empty: keep only thoughts carrying ALL of these tags
+   *  (case-insensitive, '#' prefix and spacing normalized like P23). */
+  requireTags?: string[]
+  /** When non-empty: keep only thoughts whose source is listed here. */
+  sources?: SourceType[]
+  /** When set (>0): keep only confidently-understood thoughts — the
+   *  engine's top suggestion ranks at ~0.95, so having any output is
+   *  the local confidence proxy; raw captures never clear the bar. */
+  minConfidence?: number
+  /** Keep only starred captures. */
+  starredOnly?: boolean
+  /** Keep only transformed captures (≥1 output). */
+  onlyTransformed?: boolean
+  /** Drop archived captures regardless of the other predicates. */
+  excludeArchived?: boolean
 }
 
 export interface Thought {
