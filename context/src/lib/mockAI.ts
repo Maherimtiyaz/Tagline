@@ -806,6 +806,165 @@ export function generateDigestBatch(
   return results
 }
 
+/* ============================================================
+   Phase 45 — Digest share links.
+
+   encodeDigestPayload / decodeDigestHash ride the exact same
+   wire format as Phase 16 output links (`#/share?d=v1.<deflate
+   + base64url>`), but carry a tagged envelope so the decoder can
+   tell a shared OUTPUT apart from a shared DIGEST without a
+   second route or any backend. Deterministic: same digest in →
+   byte-identical link out (payload fields are all frozen inside
+   the stored WeeklyDigest — no clock reads, no randomness).
+   ============================================================ */
+
+interface SharedDigestPayload {
+  /** Envelope discriminator — output payloads never carry this. */
+  kind: 'digest'
+  weekKey: string
+  from: number
+  to: number
+  generatedAt: number
+  headline: string
+  captured: number
+  transformed: number
+  exported: number
+  sections: { heading: string; items: string[] }[]
+}
+
+/* ---------- Phase 45 wire codec (pure, Node-safe) ----------
+   The deflate+base64url helpers are copied verbatim from lib/share
+   rather than imported, keeping mockAI dependency-free exactly like
+   Phases 40–44 did — the store imports mockAI, so any import cycle
+   would poison every existing harness. Wire compatibility with the
+   Phase 16 output links is by construction (same algorithm). */
+
+const DIGEST_PREFIX = 'v1.'
+
+function bytesToBase64Url(bytes: Uint8Array): string {
+  let bin = ''
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i])
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+function base64UrlToBytes(value: string): Uint8Array {
+  const b64 = value.replace(/-/g, '+').replace(/_/g, '/')
+  const bin = atob(b64)
+  const bytes = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+  return bytes
+}
+
+/** Pure encoded payload body (`v1.<deflate+base64url>`), WITHOUT the
+ *  `#/share?d=` prefix. Deterministic: same digest in → byte-identical
+ *  string out. Exposed for tests and for callers that assemble their
+ *  own absolute link. */
+export function encodeDigestPayload(d: WeeklyDigest): string {
+  const payload: SharedDigestPayload = {
+    kind: 'digest',
+    weekKey: d.weekKey,
+    from: d.from,
+    to: d.to,
+    generatedAt: d.generatedAt,
+    headline: d.headline,
+    captured: d.captured,
+    transformed: d.transformed,
+    exported: d.exported,
+    sections: d.sections.map((s) => ({ heading: s.heading, items: [...s.items] })),
+  }
+  const json = JSON.stringify({
+    t: JSON.stringify(payload),
+    f: 'digest',
+    n: `Weekly Digest — ${formatWeekKey(d.weekKey)}`,
+  })
+  return `${DIGEST_PREFIX}${bytesToBase64Url(deflateRaw(new TextEncoder().encode(json)))}`
+}
+
+/** Absolute share URL for a stored digest (browser-only; returns ''
+ *  outside a browser so callers can degrade gracefully). Same shape
+ *  the Phase 16 SharePage consumes: `origin#/share?d=v1.…`. */
+export function createDigestShareLink(d: WeeklyDigest): string {
+  if (typeof window === 'undefined') return ''
+  const origin = window.location.origin + window.location.pathname.replace(/index\.html$/, '')
+  return `${origin}#/share?d=${encodeDigestPayload(d)}`
+}
+
+const isStrArray = (v: unknown): v is string[] =>
+  Array.isArray(v) && v.every((i) => typeof i === 'string')
+
+/** Validate one decoded digest envelope; strict field-by-field checks
+ *  so poisoned payloads can never render. Null on any deviation. */
+function digestFromEnvelope(p: Record<string, unknown>): WeeklyDigest | null {
+  /* Must be a digest envelope riding the output-link codec. */
+  if (p['f'] !== 'digest' || typeof p['t'] !== 'string') return null
+  let inner: unknown
+  try {
+    inner = JSON.parse(p['t'])
+  } catch {
+    return null
+  }
+  if (!inner || typeof inner !== 'object') return null
+  const d = inner as Record<string, unknown>
+  if (d['kind'] !== 'digest') return null
+  if (
+    typeof d.weekKey !== 'string' || !WEEK_KEY_RE.test(d.weekKey) ||
+    typeof d.from !== 'number' || !Number.isFinite(d.from) ||
+    typeof d.to !== 'number' || !Number.isFinite(d.to) ||
+    typeof d.generatedAt !== 'number' || !Number.isFinite(d.generatedAt) ||
+    typeof d.headline !== 'string' ||
+    typeof d.captured !== 'number' || !Number.isFinite(d.captured) ||
+    typeof d.transformed !== 'number' || !Number.isFinite(d.transformed) ||
+    typeof d.exported !== 'number' || !Number.isFinite(d.exported) ||
+    !Array.isArray(d.sections)
+  ) {
+    return null
+  }
+  const sectionsOk = (d.sections as unknown[]).every(
+    (sec) =>
+      !!sec &&
+      typeof sec === 'object' &&
+      typeof (sec as { heading?: unknown }).heading === 'string' &&
+      isStrArray((sec as { items?: unknown }).items),
+  )
+  if (!sectionsOk) return null
+  return {
+    weekKey: d.weekKey,
+    from: d.from,
+    to: d.to,
+    generatedAt: d.generatedAt,
+    headline: d.headline,
+    captured: d.captured,
+    transformed: d.transformed,
+    exported: d.exported,
+    sections: d.sections as DigestSection[],
+  }
+}
+
+/** Decode a digest payload straight from a location hash (the raw
+ *  `#/share?d=v1.…` string — no intermediate share-link round trip).
+ *  Also tolerates hand-built `#share=v1.…` fragments, mirroring
+ *  decodeShareHash. Strict validation: anything malformed, non-digest,
+ *  or poisoned yields null; never throws. */
+export function decodeDigestHash(hash: string): WeeklyDigest | null {
+  const match = /(?:[?&/#])share=([^&]+)|[?&]d=([^&]+)/.exec(hash ?? '')
+  const raw0 = match?.[1] ?? match?.[2]
+  if (!raw0) return null
+  try {
+    const raw = raw0.startsWith(DIGEST_PREFIX) ? raw0.slice(DIGEST_PREFIX.length) : raw0
+    const json = new TextDecoder().decode(inflateRaw(base64UrlToBytes(raw)))
+    return digestFromEnvelope(JSON.parse(json) as Record<string, unknown>)
+  } catch {
+    return null
+  }
+}
+
+/** Decode a digest payload from an ABSOLUTE share link produced by
+ *  createDigestShareLink (or any string containing the `d=`/`share=`
+ *  fragment). Null when absent/malformed; never throws. */
+export function decodeDigestLink(link: string): WeeklyDigest | null {
+  return decodeDigestHash(link ?? '')
+}
+
 /** Trigger a `.md` file download for a digest (browser-only; inert in
  *  Node/tests). Mirrors exporters.downloadExport's blob → anchor flow. */
 export function downloadDigestMarkdown(d: WeeklyDigest): void {
