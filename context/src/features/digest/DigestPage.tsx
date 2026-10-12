@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { ArrowDown, ArrowUpRight, CalendarRange, ChevronLeft, ChevronRight, Download, Layers, MailCheck, Minus, RotateCcw, Sparkles } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { ArrowDown, ArrowUpRight, CalendarRange, Check, ChevronLeft, ChevronRight, Copy, Download, Layers, Link2, MailCheck, Minus, RotateCcw, Sparkles } from 'lucide-react'
 import { useAppStore } from '../../lib/store'
 import { cn } from '../../lib/cn'
 import { SEED_THOUGHTS, SEED_TIMELINE } from '../../data/mock'
@@ -9,11 +9,13 @@ import {
   addWeeks,
   buildWeeklyDigest,
   copyDigestEmail,
+  createDigestShareLink,
   downloadDigestMarkdown,
   formatWeekKey,
   isoWeekKey,
   recentWeekKeys,
 } from '../../lib/mockAI'
+import { copyToClipboard } from '../../lib/share'
 
 /* ============================================================
    Phase 42 — Weekly Digest page. The Phase 40 engine and the
@@ -89,6 +91,11 @@ export function DigestPage() {
   const compareDigest = useAppStore((s) => s.compareDigest)
   const pushToast = useAppStore((s) => s.pushToast)
   const [emailCopied, setEmailCopied] = useState(false)
+  /* Phase 45 — share-link state: copied flash + a dismissible reveal
+     panel so the (long) link is selectable even without clipboard. */
+  const [linkCopied, setLinkCopied] = useState(false)
+  const [shareRevealed, setShareRevealed] = useState(false)
+  const shareLinkRef = useRef<HTMLTextAreaElement | null>(null)
   const stored = digests[weekKey]
 
   const comparison = useMemo(
@@ -120,10 +127,36 @@ export function DigestPage() {
   const weeks = useMemo(() => recentWeekKeys(Date.now(), 8), [])
 
   /* Phase 43 — week key resets whenever the anchor moves, so a stale
-     "copied" flash can never bleed onto a different digest. */
+     "copied" flash can never bleed onto a different digest.
+     Phase 45 extends the same reset to the share-link states. */
   const gotoWeek = (updater: (ts: number) => number) => {
     setAnchorTs(updater)
     setEmailCopied(false)
+    setLinkCopied(false)
+    setShareRevealed(false)
+  }
+
+  /* Phase 45 — deterministic share link for the STORED digest only
+     (previews are unfrozen data; sharing them would be lying). */
+  const shareLink = useMemo(() => (stored ? createDigestShareLink(stored) : ''), [stored])
+
+  /* Auto-select the revealed link once per open so Ctrl+C is enough. */
+  useEffect(() => {
+    if (shareRevealed && shareLinkRef.current) {
+      shareLinkRef.current.focus()
+      shareLinkRef.current.select()
+    }
+  }, [shareRevealed])
+
+  const handleCopyLink = async () => {
+    if (!stored || !shareLink) return
+    const ok = await copyToClipboard(shareLink)
+    setLinkCopied(ok)
+    pushToast(
+      ok ? `Digest link copied · ${stored.weekKey}` : 'Clipboard unavailable — reveal the link instead',
+      ok ? 'success' : 'error',
+    )
+    if (ok) window.setTimeout(() => setLinkCopied(false), 2000)
   }
 
   const handleCopyEmail = async () => {
@@ -281,6 +314,20 @@ export function DigestPage() {
                 </button>
                 <button
                   type="button"
+                  aria-label="Copy digest share link to clipboard"
+                  onClick={handleCopyLink}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs transition-colors focus-visible:ring-2 focus-visible:ring-accent',
+                    linkCopied
+                      ? 'border-accent-line bg-accent-soft text-ink'
+                      : 'border-line text-ink-muted hover:border-line-strong hover:text-ink',
+                  )}
+                >
+                  {linkCopied ? <Check size={13} className="text-emerald" /> : <Link2 size={13} />}
+                  {linkCopied ? 'Copied!' : 'Share link'}
+                </button>
+                <button
+                  type="button"
                   onClick={() => clearDigest(weekKey)}
                   className="inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs text-ink-muted transition-colors hover:border-line-strong hover:text-ink focus-visible:ring-2 focus-visible:ring-accent"
                 >
@@ -311,6 +358,45 @@ export function DigestPage() {
               <CalendarRange size={11} aria-hidden /> stored under {weekKey}
             </span>
           </div>
+
+          {/* Phase 45 — share-link reveal panel: the link rides entirely
+              in the URL fragment (no server), so offer it as selectable
+              text next to a native copy button. */}
+          {stored && shareRevealed && (
+            <div
+              className="mt-3 flex items-start gap-2 rounded-md border border-accent-line bg-accent-soft px-3 py-2"
+              role="group"
+              aria-label="Digest share link"
+            >
+              <textarea
+                ref={shareLinkRef}
+                readOnly
+                rows={2}
+                value={shareLink}
+                spellCheck={false}
+                onFocus={(e) => e.currentTarget.select()}
+                aria-label="Digest share link, selectable text"
+                className="min-h-0 w-full resize-none bg-transparent font-mono text-2xs leading-relaxed break-all text-ink outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => setShareRevealed(false)}
+                aria-label="Dismiss share link panel"
+                className="shrink-0 rounded-md border border-line bg-surface px-2 py-1 font-mono text-3xs text-ink-muted transition-colors hover:border-line-strong hover:text-ink focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                Done
+              </button>
+            </div>
+          )}
+          {stored && !shareRevealed && (
+            <button
+              type="button"
+              onClick={() => setShareRevealed(true)}
+              className="mt-2 inline-flex items-center gap-1 font-mono text-3xs text-ink-faint underline-offset-4 transition-colors hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            >
+              <Copy size={10} aria-hidden /> clipboard not working? show the full link
+            </button>
+          )}
         </section>
 
         <p className="pb-2 text-center font-mono text-3xs text-ink-faint">
