@@ -825,12 +825,42 @@ export function digestToEmail(d: WeeklyDigest): DigestEmail {
 export async function copyDigestEmail(d: WeeklyDigest): Promise<boolean> {
   if (typeof navigator === 'undefined' || !navigator.clipboard) return false
   try {
-    const { subject, body } = digestToEmail(d)
-    await navigator.clipboard.writeText(`Subject: ${subject}\n\n${body}`)
+    await navigator.clipboard.writeText(formatDigestEmailClipboard(d))
     return true
   } catch {
     return false
   }
+}
+
+/* NOTE: formatDigestEmailClipboard / downloadDigestEmail are defined
+   below (function declarations hoist, so copyDigestEmail can call the
+   formatter regardless of source order). */
+
+/** Rendered clipboard/email text — exactly what copyDigestEmail writes:
+ *  a `Subject:` header line, a blank line, then the plain-text body.
+ *  Pure and deterministic (same digest in → byte-identical string out),
+ *  so callers can preview, test, or download without touching the
+ *  clipboard API. Phase 50 building block. */
+export function formatDigestEmailClipboard(d: WeeklyDigest): string {
+  const { subject, body } = digestToEmail(d)
+  return `Subject: ${subject}\n\n${body}`
+}
+
+/** Trigger an `.eml` file download carrying the exact rendered email
+ *  (browser-only; inert in Node/tests). Same blob → anchor flow as
+ *  downloadDigestMarkdown, named `context-weekly-digest-<weekKey>.eml`. */
+export function downloadDigestEmail(d: WeeklyDigest): void {
+  if (typeof document === 'undefined' || typeof Blob === 'undefined') return
+  const blob = new Blob([formatDigestEmailClipboard(d)], { type: 'message/rfc822;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `context-weekly-digest-${d.weekKey}.eml`
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  /* Revoke on the next tick so Safari has time to start the download. */
+  window.setTimeout(() => URL.revokeObjectURL(url), 0)
 }
 
 /** Batch-generate digests for the `count` most recent ISO weeks
