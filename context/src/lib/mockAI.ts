@@ -11,6 +11,7 @@ import type {
   Understanding,
   WeeklyDigest,
 } from '../data/types'
+import { deflateRaw, inflateRaw } from 'pako'
 import { OUTPUT_LABEL } from './outputMeta'
 
 /* ============================================================

@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { AlertTriangle, Check, Copy, ExternalLink, FileText, Link2 } from 'lucide-react'
+import { AlertTriangle, CalendarRange, Check, Copy, ExternalLink, FileText, Link2 } from 'lucide-react'
 import { Logo } from '../brand/Logo'
 import { Badge } from '../../components/ui/Badge'
 import { useAppStore } from '../../lib/store'
 import { copyToClipboard, decodeShareHash, type SharedPayload } from '../../lib/share'
+import { decodeDigestHash } from '../../lib/mockAI'
+import type { WeeklyDigest } from '../../data/types'
 import { cn } from '../../lib/cn'
 
 /* ============================================================
@@ -15,11 +17,16 @@ import { cn } from '../../lib/cn'
    the output editor. Everything decodes client-side (fragments
    never hit a server), so a shared link opens as a clean,
    read-only document on any device — even without local data.
+
+   Phase 45 extends the SAME route to weekly-digest links: they
+   ride the identical wire format with a tagged envelope, so we
+   probe for a digest first and fall back to the output decoder.
    ============================================================ */
 
 type DecodeState =
   | { kind: 'checking' }
   | { kind: 'ok'; payload: SharedPayload }
+  | { kind: 'digest'; digest: WeeklyDigest }
   | { kind: 'corrupted' }
   | { kind: 'missing' }
 
@@ -30,14 +37,23 @@ export function SharePage() {
   const recordDemoVisit = useAppStore((s) => s.recordDemoVisit)
 
   useEffect(() => {
+    /* Digest envelopes are strictly validated; null means "not a
+       digest" (or poisoned), so output links keep flowing through
+       the Phase 16 decoder untouched. */
+    const digest = decodeDigestHash(window.location.hash)
+    if (digest) {
+      setState({ kind: 'digest', digest })
+      return
+    }
     const result = decodeShareHash(window.location.hash)
     if (result.ok) setState({ kind: 'ok', payload: result.payload })
     else setState({ kind: result.reason === 'corrupted' ? 'corrupted' : 'missing' })
   }, [])
 
-  /* Conversion tracking (§56): opening a share link is a qualified visit. */
+  /* Conversion tracking (§56): opening a share link — output or
+     digest — is a qualified visit. */
   useEffect(() => {
-    if (state.kind === 'ok') recordDemoVisit()
+    if (state.kind === 'ok' || state.kind === 'digest') recordDemoVisit()
     // record once per decoded document, not on every state churn
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.kind])
@@ -46,6 +62,19 @@ export function SharePage() {
     () => (state.kind === 'ok' ? state.payload.text.trim().split(/\s+/).filter(Boolean).length : 0),
     [state],
   )
+
+  /* Phase 45 — week label + date range for digest cards, computed
+     from the frozen payload only (no clock reads, no store needed). */
+  const digestMeta = useMemo(() => {
+    if (state.kind !== 'digest') return null
+    const m = /^(\d{4})-W(\d{2})$/.exec(state.digest.weekKey)
+    const fmt = (ts: number) =>
+      new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    return {
+      label: m ? `Week ${Number(m[2])} · ${m[1]}` : state.digest.weekKey,
+      range: `${fmt(state.digest.from)} – ${fmt(state.digest.to)}`,
+    }
+  }, [state])
 
   const onCopyLink = async () => {
     const ok = await copyToClipboard(window.location.href)
@@ -57,9 +86,11 @@ export function SharePage() {
     <div className="flex min-h-dvh flex-col bg-canvas text-ink">
       <header className="flex items-center gap-3 border-b border-line px-4 py-3 md:px-8">
         <Logo />
-        <Badge tone="neutral">Shared with you</Badge>
+        <Badge tone="neutral">
+          {state.kind === 'digest' ? 'Weekly digest · shared with you' : 'Shared with you'}
+        </Badge>
         <div className="ml-auto flex items-center gap-2">
-          {state.kind === 'ok' && (
+          {(state.kind === 'ok' || state.kind === 'digest') && (
             <button
               type="button"
               onClick={onCopyLink}
@@ -121,6 +152,50 @@ export function SharePage() {
               <pre className="whitespace-pre-wrap break-words px-5 py-5 font-sans text-sm leading-relaxed text-ink-muted md:px-7">
                 {state.payload.text}
               </pre>
+            </motion.article>
+          )}
+
+          {/* Phase 45 — read-only weekly digest card. Rendered purely
+              from the decoded, validated payload; no store reads. */}
+          {state.kind === 'digest' && digestMeta && (
+            <motion.article
+              key="digest"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+              className="rounded-xl border border-line bg-surface shadow-sm"
+              aria-label={`Shared weekly digest — ${digestMeta.label}`}
+            >
+              <div className="border-b border-line px-5 py-4 md:px-7">
+                <h1 className="flex items-center gap-2 text-lg font-semibold tracking-tight">
+                  <CalendarRange size={17} className="text-accent" aria-hidden />
+                  Context Weekly Digest — {digestMeta.label}
+                </h1>
+                <p className="mt-1 font-mono text-3xs tabular-nums text-ink-faint">
+                  context · shared digest · {digestMeta.range} · generated{' '}
+                  {new Date(state.digest.generatedAt).toLocaleDateString('en-US')}
+                </p>
+              </div>
+              <div className="px-5 py-5 md:px-7">
+                <p className="mb-2 text-sm font-medium text-ink">{state.digest.headline}</p>
+                <p className="mb-4 font-mono text-3xs tabular-nums text-ink-subtle">
+                  Captured {state.digest.captured} · Transformed {state.digest.transformed} · Exported{' '}
+                  {state.digest.exported}
+                </p>
+                <div className="space-y-4">
+                  {state.digest.sections.map((sec) => (
+                    <div key={sec.heading}>
+                      <h2 className="label-mono mb-1.5 text-ink-subtle">{sec.heading}</h2>
+                      <ul className="list-disc space-y-1 pl-5 text-sm leading-relaxed text-ink-muted marker:text-ink-faint">
+                        {sec.items.map((it, i) => (
+                          <li key={i}>{it}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </motion.article>
           )}
 
