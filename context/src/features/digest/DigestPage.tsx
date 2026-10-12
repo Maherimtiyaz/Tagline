@@ -28,28 +28,13 @@ import { copyToClipboard } from '../../lib/share'
 
 const DAY_MS = 86_400_000
 
-/** Monday 00:00 local for an ISO week key. Falls back to `now` for
-    malformed keys (mirrors formatWeekKey's never-throw stance). */
-export function weekStartFromKey(weekKey: string, now = Date.now()): number {
-  const m = /^(\d{4})-W(\d{2})$/.exec(weekKey)
-  if (!m) return now
-  const isoYear = Number(m[1])
-  const week = Number(m[2])
-  const jan1 = new Date(isoYear, 0, 1)
-  const jan1IsoDow = (jan1.getDay() + 6) % 7 + 1
-  const firstMondayOffset = jan1IsoDow === 1 ? 0 : 8 - jan1IsoDow
-  const w1 = new Date(isoYear, 0, 1 + firstMondayOffset)
-  let monday = new Date(w1.getTime() + (week - 1) * 7 * DAY_MS)
-  monday.setHours(0, 0, 0, 0)
-  /* DST guard: if the re-anchored Monday keyed into a neighbouring
-     week, step ±1 day until it lands back on the requested key. */
-  if (isoWeekKey(monday.getTime()) !== weekKey) {
-    const alt = new Date(monday.getTime() + DAY_MS)
-    alt.setHours(0, 0, 0, 0)
-    if (isoWeekKey(alt.getTime()) === weekKey) monday = alt
-  }
-  return monday.getTime()
-}
+/* Phase 42 shipped a local copy of this helper; Phase 46 promoted a
+   calendar-safe (DST-proof) implementation into lib/mockAI next to
+   addWeeks/isoWeekKey — the whole week-math family now lives in one
+   place and DigestPage/store.digestStreak provably agree. Re-exported
+   under the same name so existing importers (and the P42 harness)
+   keep working untouched. */
+export { weekStartFromKey } from '../../lib/mockAI'
 
 const fmtDay = (ts: number) =>
   new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })

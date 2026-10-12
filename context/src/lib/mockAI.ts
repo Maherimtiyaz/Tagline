@@ -757,13 +757,59 @@ export function digestRuleMatches(rule: DigestRule, t: Thought): boolean {
    isoWeekKey so DST and partial weeks can't drift the sequence.
    ============================================================ */
 
+/* Calendar-safe day arithmetic: setDate() normalizes through DST,
+   so a spring-forward week is always exactly 7 calendar days no
+   matter what fixed ms constant we multiply. (Subtracting raw ms
+   and re-anchoring with setHours lands on Sunday 23h/Monday 1h in
+   DST zones — the Phase 46 bug this replaces.) */
+const shiftDays = (ts: number, days: number): number => {
+  const d = new Date(ts)
+  d.setDate(d.getDate() + days)
+  return d.getTime()
+}
+
 /** Add `n` whole ISO weeks to a timestamp (n may be negative).
- *  Jumps exactly 7 days per step and re-anchors to that week's
- *  Monday 00:00 local, so repeated calls walk Mon→Mon cleanly
- *  even across DST transitions. */
+ *  Jumps exactly 7 calendar days per step and re-anchors to that
+ *  week's Monday 00:00 local, so repeated calls walk Mon→Mon
+ *  cleanly even across DST transitions. Idempotent on Monday
+ *  anchors: from any Monday 00:00 the result sits exactly
+ *  n × 7 × DAY_MS away, in every timezone. */
 export function addWeeks(ts: number, n: number): number {
-  const target = ts + n * 7 * DAY_MS
-  return weekStart(target)
+  return weekStart(shiftDays(ts, n * 7))
+}
+
+/** Monday 00:00 local for an ISO week key (`YYYY-Www`) — the exact
+ *  inverse of isoWeekKey. Built from calendar dates (never raw ms
+ *  steps) so DST cannot drift the anchor; a ±1-day guard covers
+ *  hemispheres where the southern DST switch lands mid-week.
+ *  Falls back to `now` for malformed keys (mirrors formatWeekKey's
+ *  never-throw stance). */
+export function weekStartFromKey(weekKey: string, now = Date.now()): number {
+  const m = /^(\d{4})-W(\d{2})$/.exec(weekKey)
+  if (!m) return now
+  const isoYear = Number(m[1])
+  const week = Number(m[2])
+  /* ISO W01 contains Jan 4 — anchor there and slide back to that
+     week's Monday via getDay(), all calendar-safe. */
+  const jan4 = new Date(isoYear, 0, 4)
+  jan4.setHours(0, 0, 0, 0)
+  const w1Monday = shiftDays(jan4.getTime(), -((jan4.getDay() + 6) % 7))
+  let monday = new Date(shiftDays(w1Monday, (Math.max(1, week) - 1) * 7))
+  monday.setHours(0, 0, 0, 0)
+  /* DST guard: if the stepped Monday keyed into a neighbouring
+     week, step ±1 day until it lands back on the requested key. */
+  const want = `${isoYear}-W${String(week).padStart(2, '0')}`
+  if (isoWeekKey(monday.getTime()) !== want) {
+    const forward = new Date(shiftDays(monday.getTime(), 1))
+    forward.setHours(0, 0, 0, 0)
+    if (isoWeekKey(forward.getTime()) === want) monday = forward
+    else {
+      const backward = new Date(shiftDays(monday.getTime(), -1))
+      backward.setHours(0, 0, 0, 0)
+      if (isoWeekKey(backward.getTime()) === want) monday = backward
+    }
+  }
+  return monday.getTime()
 }
 
 /** The last `count` ISO-week keys ending at the week containing
