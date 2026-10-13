@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowDown, ArrowUpRight, CalendarRange, Check, ChevronLeft, ChevronRight, Copy, Download, Layers, Link2, MailCheck, Minus, RotateCcw, Sparkles } from 'lucide-react'
+import { ArrowDown, ArrowUpRight, CalendarRange, Check, ChevronLeft, ChevronRight, Copy, Download, FileText, Layers, Link2, MailCheck, Minus, RotateCcw, Sparkles } from 'lucide-react'
 import { useAppStore } from '../../lib/store'
 import { cn } from '../../lib/cn'
 import { SEED_THOUGHTS, SEED_TIMELINE } from '../../data/mock'
@@ -72,6 +72,8 @@ export function DigestPage() {
   const clearDigest = useAppStore((s) => s.clearDigest)
   /* Phase 43 — batch backfill + email copy. */
   const generateDigestBatch = useAppStore((s) => s.generateDigestBatch)
+  /* Phase 50 — .eml download of the stored digest. */
+  const downloadDigestEmailFile = useAppStore((s) => s.downloadDigestEmailFile)
   /* Phase 44 — week-over-week comparison (pure read over stored digests). */
   const compareDigest = useAppStore((s) => s.compareDigest)
   const pushToast = useAppStore((s) => s.pushToast)
@@ -153,6 +155,16 @@ export function DigestPage() {
       ok ? 'success' : 'error',
     )
     if (ok) window.setTimeout(() => setEmailCopied(false), 2000)
+  }
+
+  /* Phase 50 — download the exact rendered email as an .eml file. */
+  const handleDownloadEmail = () => {
+    if (!stored) return
+    const ok = downloadDigestEmailFile(stored.weekKey)
+    pushToast(
+      ok ? `Digest email saved · ${stored.weekKey}.eml` : 'No stored digest to export',
+      ok ? 'success' : 'error',
+    )
   }
 
   return (
@@ -296,6 +308,16 @@ export function DigestPage() {
                 >
                   {emailCopied ? <MailCheck size={13} className="text-emerald" /> : <Sparkles size={13} />}
                   {emailCopied ? 'Copied!' : 'Copy as email'}
+                </button>
+                {/* Phase 50 — save the same rendering as an .eml file. */}
+                <button
+                  type="button"
+                  aria-label="Download digest email as .eml file"
+                  onClick={handleDownloadEmail}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs text-ink-muted transition-colors hover:border-line-strong hover:text-ink focus-visible:ring-2 focus-visible:ring-accent"
+                >
+                  <FileText size={13} />
+                  Download .eml
                 </button>
                 <button
                   type="button"

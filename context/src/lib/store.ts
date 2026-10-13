@@ -19,6 +19,7 @@ import {
   analyzeThought,
   buildWeeklyDigest,
   digestToEmail,
+  downloadDigestEmail,
   generateOutput,
   isoWeekKey,
   retune,
@@ -422,6 +423,12 @@ interface AppState {
   /** Phase 43 — deterministic email rendering of a STORED digest ('' or
    *  unknown week → null). Never generates as a side effect. */
   getDigestEmail: (weekKey: string) => { subject: string; body: string } | null
+  /** Phase 50 — download a STORED digest as an `.eml` file carrying the
+   *  exact rendered email (Subject header + plain-text body). Returns
+   *  false for ''/unknown keys (nothing generated, nothing downloaded);
+   *  true once the browser download is triggered. Browser-only side
+   *  effect lives in mockAI.downloadDigestEmail (inert under Node). */
+  downloadDigestEmailFile: (weekKey: string) => boolean
   /** Phase 44 — week-over-week diff of two stored digests. Compares the
    *  given week against `prevKey` when provided, otherwise the closest
    *  earlier stored week. Null when either side is missing/invalid —
@@ -538,6 +545,17 @@ export const useAppStore = create<AppState>()(
       getDigestEmail: (weekKey) => {
         const d = weekKey ? get().digests[weekKey] : undefined
         return d ? digestToEmail(d) : null
+      },
+
+      /** Phase 50 — `.eml` download of a STORED digest. Same read-only
+       *  guard as getDigestEmail (no generation side effect); the actual
+       *  blob/anchor work stays inside mockAI so the store remains free
+       *  of DOM code and Node harnesses can count invocations via spy. */
+      downloadDigestEmailFile: (weekKey) => {
+        const d = weekKey ? get().digests[weekKey] : undefined
+        if (!d) return false
+        downloadDigestEmail(d)
+        return true
       },
 
       /** Phase 44 — pure week-over-week diff over the stored digest map.
