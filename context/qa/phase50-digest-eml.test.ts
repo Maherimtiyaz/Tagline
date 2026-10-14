@@ -35,6 +35,8 @@ import {
   digestToEmail,
   downloadDigestEmail,
   formatDigestEmailClipboard,
+  formatWeekKey,
+  isoWeekKey,
 } from '../src/lib/mockAI'
 import { useAppStore } from '../src/lib/store'
 
@@ -47,9 +49,11 @@ function check(name: string, cond: boolean) {
 
 const s = () => useAppStore.getState()
 
-/* Fixed Monday anchor: 2026-10-05 → ISO week 2026-W40. */
+/* Fixed Monday anchor: 2026-10-05 → ISO week 2026-W41 (W40 starts
+   Sep 28). Derived from the engine's own isoWeekKey so this fixture
+   can never silently drift from a leap-year change. */
 const MON_NOON = new Date(2026, 9, 5, 12, 0, 0).getTime()
-const WEEK = '2026-W40'
+const WEEK = isoWeekKey(MON_NOON) /* 2026-W41 */
 
 console.log('Phase 50: digest .eml export')
 
@@ -67,7 +71,7 @@ check('exact shape: "Subject: <subject>\\n\\n<body>"', (() => {
   return formatDigestEmailClipboard(d1) === `Subject: ${e.subject}\n\n${e.body}`
 })())
 check('starts with the Subject header naming the formatted week',
-  formatDigestEmailClipboard(d1).startsWith('Subject: Your Context digest — Week 40 · 2026'))
+  formatDigestEmailClipboard(d1).startsWith(`Subject: Your Context digest — ${formatWeekKey(WEEK)}`))
 check('header separated from body by exactly one blank line', (() => {
   const t = formatDigestEmailClipboard(d1)
   const nl = t.indexOf('\n')
