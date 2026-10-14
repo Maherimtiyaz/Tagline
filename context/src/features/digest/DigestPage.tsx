@@ -14,6 +14,7 @@ import {
   formatWeekKey,
   isoWeekKey,
   recentWeekKeys,
+  weekStartFromKey,
 } from '../../lib/mockAI'
 import { copyToClipboard } from '../../lib/share'
 
@@ -25,8 +26,6 @@ import { copyToClipboard } from '../../lib/share'
    a "Download .md" button wired to digestToMarkdown. All data
    is local; the only clock read is the initial anchor week.
    ============================================================ */
-
-const DAY_MS = 86_400_000
 
 /* Phase 42 shipped a local copy of this helper; Phase 46 promoted a
    calendar-safe (DST-proof) implementation into lib/mockAI next to
