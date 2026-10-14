@@ -527,12 +527,21 @@ export function isoWeekKey(ts: number): string {
   /* Shift to this week's Thursday — it decides the ISO year. */
   d.setDate(d.getDate() + (4 - isoDow))
   const isoYear = d.getFullYear()
-  const jan1 = new Date(isoYear, 0, 1)
-  const jan1IsoDow = (jan1.getDay() + 6) % 7 + 1
-  /* Days from Jan 1 (of the ISO year) to that year's first Monday. */
-  const firstMondayOffset = jan1IsoDow === 1 ? 0 : 8 - jan1IsoDow
-  const w1 = new Date(isoYear, 0, 1 + firstMondayOffset)
-  const week = Math.floor((d.getTime() - w1.getTime()) / (7 * DAY_MS)) + 1
+  /* ISO W01 is by definition the week containing Jan 4, so that
+     week's Monday is Jan 4 slid back to its own Monday. Deriving
+     W1 from Jan 4 (instead of "first Monday on/after Jan 1") fixes
+     years where Jan 1 falls Fri–Sun: there the correct W1 Monday
+     precedes Jan 1 and the old rule produced a phantom W00 (and a
+     one-week-late label for every early-January day). Calendar-safe
+     setDate arithmetic keeps DST zones exact. */
+  const jan4 = new Date(isoYear, 0, 4)
+  jan4.setHours(0, 0, 0, 0)
+  const w1 = new Date(jan4.getTime())
+  w1.setDate(w1.getDate() - ((jan4.getDay() + 6) % 7))
+  /* Round the raw ms distance to whole weeks before flooring: a DST
+     offset inside the span would otherwise shave a hair off an exact
+     multiple and floor down one week too early. */
+  const week = Math.round((d.getTime() - w1.getTime()) / (7 * DAY_MS)) + 1
   return `${isoYear}-W${String(week).padStart(2, '0')}`
 }
 
@@ -947,8 +956,13 @@ export function downloadDigestEmail(d: WeeklyDigest): void {
   document.body.appendChild(a)
   a.click()
   a.remove()
-  /* Revoke on the next tick so Safari has time to start the download. */
-  window.setTimeout(() => URL.revokeObjectURL(url), 0)
+  /* Revoke on the next tick so Safari has time to start the
+     download. Read setTimeout off globalThis, not `window`: test
+     harnesses shim a partial `window` (localStorage only) and freeze
+     timers by replacing globalThis.setTimeout with a stub — going
+     through window would crash on either quirk. */
+  const scheduleRevoke = (globalThis as { setTimeout?: typeof setTimeout }).setTimeout
+  if (typeof scheduleRevoke === 'function') scheduleRevoke(() => URL.revokeObjectURL(url), 0)
 }
 
 /** Batch-generate digests for the `count` most recent ISO weeks
@@ -1142,6 +1156,11 @@ export function downloadDigestMarkdown(d: WeeklyDigest): void {
   document.body.appendChild(a)
   a.click()
   a.remove()
-  /* Revoke on the next tick so Safari has time to start the download. */
-  window.setTimeout(() => URL.revokeObjectURL(url), 0)
+  /* Revoke on the next tick so Safari has time to start the
+     download. Read setTimeout off globalThis, not `window`: test
+     harnesses shim a partial `window` (localStorage only) and freeze
+     timers by replacing globalThis.setTimeout with a stub — going
+     through window would crash on either quirk. */
+  const scheduleRevoke = (globalThis as { setTimeout?: typeof setTimeout }).setTimeout
+  if (typeof scheduleRevoke === 'function') scheduleRevoke(() => URL.revokeObjectURL(url), 0)
 }
