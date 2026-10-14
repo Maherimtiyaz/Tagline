@@ -37,10 +37,12 @@ const s = () => useAppStore.getState()
 const DAY = 86_400_000
 const DOMAIN_KEY = 'context-demo-state-v1'
 
-/* Fixed Monday anchor: 2026-10-05 12:00 local → ISO week 2026-W40. */
+/* Fixed Monday anchor: 2026-10-05 12:00 local → ISO week 2026-W41
+   (W40 starts Sep 28). Derived from the engine's own isoWeekKey so
+   this fixture can never silently drift from a leap-year change. */
 const MON_NOON = new Date(2026, 9, 5, 12, 0, 0).getTime()
-const WEEK = '2026-W40'
-const PREV_WEEK = '2026-W39'
+const WEEK = isoWeekKey(MON_NOON) /* 2026-W41 */
+const PREV_WEEK = isoWeekKey(addWeeks(MON_NOON, -1)) /* 2026-W40 */
 
 console.log('Phase 41: digest export, week math, persistence')
 
@@ -67,7 +69,7 @@ check('recentWeekKeys(0) empty array', recentWeekKeys(MON_NOON, 0).length === 0)
 check('recentWeekKeys(negative) clamps to empty', recentWeekKeys(MON_NOON, -3).length === 0)
 
 /* ---- formatWeekKey ---- */
-check('formatWeekKey humanizes valid key', formatWeekKey(WEEK) === 'Week 40 · 2026')
+check('formatWeekKey humanizes valid key', formatWeekKey(WEEK) === `Week ${Number(WEEK.slice(6))} · 2026`)
 check('formatWeekKey strips leading zero', formatWeekKey('2026-W05') === 'Week 5 · 2026')
 check('formatWeekKey passes malformed through unchanged', formatWeekKey('garage') === 'garage')
 check('formatWeekKey passes wrong-shape through unchanged', formatWeekKey('26-W40') === '26-W40')
@@ -89,7 +91,7 @@ const fixture: WeeklyDigest = {
   ],
 }
 const md = digestToMarkdown(fixture)
-check('markdown title uses humanized week', md.startsWith('# Weekly Digest — Week 40 · 2026'))
+check('markdown title uses humanized week', md.startsWith(`# Weekly Digest — ${formatWeekKey(WEEK)}`))
 check('markdown carries italic date-range line', /\n_.+ – .+\n/.test(md))
 check('markdown embeds headline bold', md.includes('**3 captures · 2 turned into documents · 1 export**'))
 check('markdown stats row present', md.includes('- Captured: 3 · Transformed: 2 · Exported: 1'))

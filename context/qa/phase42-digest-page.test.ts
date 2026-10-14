@@ -32,9 +32,12 @@ function check(name: string, cond: boolean) {
 const s = () => useAppStore.getState()
 const DAY = 86_400_000
 
-/* Fixed Monday anchor: 2026-10-05 → ISO week 2026-W40. */
+/* Fixed Monday anchor: 2026-10-05 → ISO week 2026-W41 (W40 starts
+   Sep 28; verified against the engine's own isoWeekKey so this
+   fixture can never silently drift from a leap-year/DST change). */
 const MON_NOON = new Date(2026, 9, 5, 12, 0, 0).getTime()
-const WEEK = '2026-W40'
+const WEEK = isoWeekKey(MON_NOON) /* 2026-W41 */
+const PREV_WEEK = isoWeekKey(addWeeks(MON_NOON, -1)) /* 2026-W40 */
 
 console.log('Phase 42: digest page helpers + insights coverage')
 
@@ -64,9 +67,13 @@ check('malformed key falls back to provided now (never throws)', weekStartFromKe
 check('empty-string key falls back too', weekStartFromKey('', 999) === 999)
 check('weekStartFromKey output feeds addWeeks cleanly', (() => {
   const mon = weekStartFromKey(WEEK)
-  /* addWeeks re-anchors to Monday 00:00, so from a noon anchor the jump
-     lands on the NEXT Monday — exactly one week past weekStart(mon). */
-  return addWeeks(mon, 1) - weekStart(mon) === DAY && isoWeekKey(addWeeks(mon, 1)) === '2026-W41'
+  /* addWeeks always re-anchors to the *local* Monday 00:00 of the
+     shifted week. From an exact Monday-00:00 start that anchor is
+     already Monday 00:00, so the jump lands exactly 7 days later —
+     regardless of the caller's time-of-day. (The old fixture assumed
+     a noon-anchor "next Monday" jump and hard-coded W41; both were
+     wrong for a midnight input.) */
+  return addWeeks(mon, 1) - weekStart(mon) === 7 * DAY && isoWeekKey(addWeeks(mon, 1)) === isoWeekKey(mon + 7 * DAY)
 })())
 
 /* ---- recentDigestStats: pure fold ---- */
@@ -126,12 +133,12 @@ check('after generate → hasWeek(week) true, covered == captured', (() => {
 check('lastGeneratedAt reflects the stored digest', recentDigestStats(s().digests).lastGeneratedAt === gen.digest.generatedAt)
 
 /* Second week, older, via the page's own navigation math. */
-const prevMon = weekStartFromKey('2026-W39')
+const prevMon = weekStartFromKey(PREV_WEEK)
 const gen2 = s().generateDigest(prevMon)
-check('older week generates independently (created=true)', gen2.created && gen2.digest.weekKey === '2026-W39')
+check('older week generates independently (created=true)', gen2.created && gen2.digest.weekKey === PREV_WEEK)
 check('stats aggregate both weeks', (() => {
   const st = recentDigestStats(s().digests)
-  return st.total === 2 && st.hasWeek('2026-W39') && st.hasWeek(WEEK)
+  return st.total === 2 && st.hasWeek(PREV_WEEK) && st.hasWeek(WEEK)
 })())
 
 const tlCountBefore = s().timeline.length
