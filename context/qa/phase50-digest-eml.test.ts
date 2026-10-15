@@ -18,6 +18,10 @@ const kv = new Map<string, string>()
     removeItem: (k: string) => void kv.delete(k),
     clear: () => kv.clear(),
   },
+  /* The download helpers defer URL.revokeObjectURL through
+     window.setTimeout; mirror the frozen global stub here so the
+     revoke stays scheduled-but-unfired under this harness. */
+  setTimeout: (fn: () => void) => { return 0 as unknown as ReturnType<typeof setTimeout> },
 }
 ;(globalThis as Record<string, unknown>).localStorage = (globalThis as { window: { localStorage: unknown } }).window.localStorage
 

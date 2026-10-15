@@ -800,25 +800,45 @@ export function weekStartFromKey(weekKey: string, now = Date.now()): number {
   const week = Number(m[2])
   /* ISO W01 contains Jan 4 — anchor there and slide back to that
      week's Monday via getDay(), all calendar-safe. */
+  /* Calendar-safe: Jan 4 is always inside ISO W01, so slide back to
+     W01's Monday with a single setDate (normalizes through DST), then
+     jump straight to the target week with another calendar setDate —
+     never raw ms arithmetic. Both hops re-normalize locally, and the
+     ±1-day guard below covers zones where the landed day has no real
+     midnight (spring-forward). */
   const jan4 = new Date(isoYear, 0, 4)
   jan4.setHours(0, 0, 0, 0)
-  const w1Monday = shiftDays(jan4.getTime(), -((jan4.getDay() + 6) % 7))
-  let monday = new Date(shiftDays(w1Monday, (Math.max(1, week) - 1) * 7))
+  const w1Monday = new Date(jan4.getTime())
+  w1Monday.setDate(jan4.getDate() - ((jan4.getDay() + 6) % 7))
+  w1Monday.setHours(0, 0, 0, 0)
+  const monday = new Date(w1Monday.getTime())
+  monday.setDate(w1Monday.getDate() + (Math.max(1, week) - 1) * 7)
   monday.setHours(0, 0, 0, 0)
   /* DST guard: if the stepped Monday keyed into a neighbouring
      week, step ±1 day until it lands back on the requested key. */
   const want = `${isoYear}-W${String(week).padStart(2, '0')}`
-  if (isoWeekKey(monday.getTime()) !== want) {
-    const forward = new Date(shiftDays(monday.getTime(), 1))
+  let finalTs = monday.getTime()
+  if (isoWeekKey(finalTs) !== want) {
+    const forward = new Date(shiftDays(finalTs, 1))
     forward.setHours(0, 0, 0, 0)
-    if (isoWeekKey(forward.getTime()) === want) monday = forward
+    if (isoWeekKey(forward.getTime()) === want) finalTs = forward.getTime()
     else {
-      const backward = new Date(shiftDays(monday.getTime(), -1))
+      /* Landed a whole week off (bulk ms drift): walk ±7 calendar
+         days before settling, so malformed-ish keys still return the
+         correct Monday instead of silently drifting. */
+      const backward = new Date(shiftDays(finalTs, -1))
       backward.setHours(0, 0, 0, 0)
-      if (isoWeekKey(backward.getTime()) === want) monday = backward
+      if (isoWeekKey(backward.getTime()) === want) finalTs = backward.getTime()
+      else {
+        for (const delta of [-7, 7]) {
+          const hop = new Date(shiftDays(monday.getTime(), delta))
+          hop.setHours(0, 0, 0, 0)
+          if (isoWeekKey(hop.getTime()) === want) { finalTs = hop.getTime(); break }
+        }
+      }
     }
   }
-  return monday.getTime()
+  return finalTs
 }
 
 /** The last `count` ISO-week keys ending at the week containing
