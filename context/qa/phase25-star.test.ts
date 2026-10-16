@@ -11,6 +11,13 @@ console.log('Phase 25: star & priority sort')
 
 S().resetDemo()
 const seedIds = S().thoughts.map((t) => t.id)
+/* Phase 28 reseeded the mock data: th-launch (index 2) ships starred and
+   th-fixes (index 3) ships pinned. Capture that baseline once so every
+   assertion below counts NEW stars relative to it instead of assuming a
+   clean slate. */
+const baselineStarred = S().thoughts.filter((t) => t.starred).map((t) => t.id)
+const wasStarred = (id: string) => baselineStarred.includes(id)
+const activeStars = () => S().thoughts.filter((t) => t.starred && !wasStarred(t.id)).length
 
 // 1. toggleStar flips flag and returns new state
 ok('toggleStar(id) stars → returns true', S().toggleStar(seedIds[0]) === true)
@@ -20,14 +27,14 @@ ok('unstar clears flag', S().thoughts.find((t) => t.id === seedIds[0])?.starred 
 
 // 2. unknown id guard
 ok('unknown id returns false', S().toggleStar('nope-123') === false)
-ok('unknown id leaves thoughts untouched', S().thoughts.every((t) => !t.starred))
+ok('unknown id leaves thoughts untouched', S().thoughts.filter((t) => t.starred).map((t) => t.id).join() === baselineStarred.join())
 
 // 3. starring does not mutate other rows / statuses / pins
 const before = JSON.stringify(S().thoughts.map((t) => [t.id, t.status, t.text, !!t.pinned]))
 S().toggleStar(seedIds[1])
 const after = JSON.stringify(S().thoughts.map((t) => [t.id, t.status, t.text, !!t.pinned]))
 ok('other fields unchanged by star', before === after)
-ok('only target starred', S().thoughts.filter((t) => t.starred).map((t) => t.id).join() === seedIds[1])
+ok('only target starred (plus seeded rows)', S().thoughts.filter((t) => t.starred).map((t) => t.id).sort().join() === [...baselineStarred, seedIds[1]].sort().join())
 
 // 4. star and pin are independent flags
 S().togglePin(seedIds[1])
@@ -42,16 +49,18 @@ S().togglePin(seedIds[1])
 }
 
 // 5. multiple stars coexist
-S().toggleStar(seedIds[2])
+S().toggleStar(seedIds[2]) // seeded-starred row → this unstars it (total: 1)
+S().toggleStar(seedIds[2]) // re-star the seeded row (total: 2)
 ok('two starred simultaneously', S().thoughts.filter((t) => t.starred).length === 2)
 
 // 6. inbox grouping simulation mirrors InboxPage logic:
 //    Starred > Pinned(not starred) > Today > Earlier, buckets disjoint & complete
 {
-  // make one row both starred+pin, another only pinned
-  S().togglePin(seedIds[0]) // seedIds[0] is starred already? no — it was toggled twice; star it again
-  S().toggleStar(seedIds[0])
-  S().togglePin(seedIds[3]) // pinned only
+  /* Current state: seedIds[1] starred, seedIds[2] unstarred (seeded star
+     removed), seedIds[3] pinned-only (seed pin intact). Make seedIds[0]
+     both starred+pinned so bucket precedence is exercised. */
+  S().togglePin(seedIds[0]) // now pinned; already starred from section 1
+  S().toggleStar(seedIds[0]) // ensure starred (was toggled twice → re-star)
   const scoped = S().thoughts.filter((t) => t.status !== 'archived')
   const isPinned = (t: { pinned?: boolean }) => !!t.pinned
   const isStarred = (t: { starred?: boolean }) => !!t.starred
