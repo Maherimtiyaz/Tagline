@@ -47,9 +47,10 @@ function check(name: string, cond: boolean) {
 
 const s = () => useAppStore.getState()
 
-/* Fixed Monday anchor: 2026-10-05 → ISO week 2026-W40. */
+/* Fixed Monday anchor: 2026-10-05. Week key derived from the engine's
+   own isoWeekKey so this fixture can never drift from corrected week math. */
 const MON_NOON = new Date(2026, 9, 5, 12, 0, 0).getTime()
-const WEEK = '2026-W40'
+const WEEK = isoWeekKey(MON_NOON) /* 2026-W41 */
 
 console.log('Phase 43: digest email + batch backfill')
 

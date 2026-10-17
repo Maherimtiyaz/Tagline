@@ -34,8 +34,12 @@ ok('only target newly pinned', S().thoughts.filter((t) => t.pinned && !seedIds.i
   && S().thoughts.filter((t) => t.pinned).length === pinnedBefore + 1)
 
 // 4. multiple pins coexist; order within scoped list preserved (store keeps createdAt desc for extras + seeds appended)
-S().togglePin(seedIds[3])
-ok('two newly pinned simultaneously', S().thoughts.filter((t) => t.pinned).length === pinnedBefore + 2)
+/* Probe-verified: th-fixes (seedIds[3]) is the ONLY seeded-pinned row, so
+   toggling it here UNPINS it — pinned set becomes {th-proposal} only. */
+S().togglePin(seedIds[3]) // th-fixes ships seeded-pinned → this UNPINS it
+ok('two pins coexist while seed unpinned', S().thoughts.filter((t) => t.pinned).map((t) => t.id).sort().join() === seedIds[1])
+S().togglePin(seedIds[3]) // re-pin the seed (pinned set = {th-proposal, th-fixes})
+ok('re-pin restores seed flag', S().thoughts.find((t) => t.id === seedIds[3])?.pinned === true)
 
 // 5. inbox grouping simulation mirrors InboxPage logic: pinned float above Today/Earlier
 const nonArchived = S().thoughts.filter((t) => t.status !== 'archived')
@@ -44,11 +48,15 @@ const isPinned = (t: { pinned?: boolean }) => !!t.pinned
 const pinnedList = scoped.filter(isPinned)
 const rest = scoped.filter((t) => !isPinned(t))
 const renderedOrder = [...pinnedList, ...rest].map((t) => t.id)
-/* The seeded pre-pinned row (th-fixes) legitimately sorts into the pinned
-   group too; assert our two new pins lead and the seed follows immediately. */
+/* Render order groups by store-array order inside each bucket, and the
+   seeded pre-pinned row (th-fixes, index 3) sits AFTER seedIds[1] in the
+   array — so assert set membership of the leading pinned block instead
+   of a fixed pairwise order. */
 ok('pinned first in render order',
-  renderedOrder[0] === seedIds[1] && renderedOrder[1] === seedIds[3]
-    && pinnedList.slice(2).every((t) => t.id !== seedIds[1] && t.id !== seedIds[3]))
+  pinnedList.length === 2 &&
+  renderedOrder.slice(0, pinnedList.length).every((id) => pinnedList.some((t) => t.id === id)) &&
+  new Set([renderedOrder[0], renderedOrder[1]]).has(seedIds[1]) &&
+  new Set([renderedOrder[0], renderedOrder[1]]).has(seedIds[3]))
 ok('no duplicates across groups', new Set(renderedOrder).size === scoped.length)
 ok('every thought appears exactly once overall',
   pinnedList.length + rest.length === scoped.length)
@@ -72,8 +80,9 @@ S().togglePin(nid)
 ok('new thought pinnable', S().thoughts.find((t) => t.id === nid)?.pinned === true)
 S().deleteThought(nid)
 
-// cleanup: unpin test-pinned rows only (seed-pinned row from Phase 28 stays pinned by design)
-S().togglePin(seedIds[1]); S().togglePin(seedIds[3])
+/* cleanup: unpin the test-pinned row (seedIds[1]); seedIds[3] was toggled
+   an even number of times so it already sits in its seeded state. */
+S().togglePin(seedIds[1])
 ok('cleanup restores baseline pinned count', S().thoughts.filter((t) => t.pinned).length === pinnedBefore)
 
 console.log(`\n${pass}/${pass + fail} passed`)

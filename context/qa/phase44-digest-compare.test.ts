@@ -31,10 +31,16 @@ function check(name: string, cond: boolean) {
 const s = () => useAppStore.getState()
 const DAY = 86_400_000
 
-/* Fixed Monday anchor: 2026-10-05 → ISO week 2026-W40. */
+/* Fixed Monday anchor: 2026-10-05. All week keys are derived from the
+   engine's own isoWeekKey/addWeeks so this fixture can never drift from
+   corrected ISO week math (previously hardcoded W40/W39 — stale since
+   the Jan-4-anchor fix shifted this anchor to W41). */
 const MON_NOON = new Date(2026, 9, 5, 12, 0, 0).getTime()
-const WEEK = '2026-W40'
-const PREV = '2026-W39'
+const WEEK = isoWeekKey(MON_NOON) /* 2026-W41 */
+const PREV = isoWeekKey(addWeeks(MON_NOON, -1)) /* 2026-W40 */
+const PREV2 = isoWeekKey(addWeeks(MON_NOON, -2)) /* 2026-W39 */
+const PREV3 = isoWeekKey(addWeeks(MON_NOON, -3)) /* 2026-W38 */
+const NEXT = isoWeekKey(addWeeks(MON_NOON, 1)) /* 2026-W42 */
 
 const mk = (
   weekKey: string,
@@ -96,21 +102,21 @@ check('flat week → all-zero deltas, busier false', (() => {
 check('prev auto-resolves to CLOSEST earlier stored week (not oldest)', (() => {
   const map = {
     [WEEK]: mk(WEEK, 5, 0, 0, 0),
-    '2026-W39': mk('2026-W39', 3, 0, 0, 0),
-    '2026-W38': mk('2026-W38', 9, 0, 0, 0),
+    [PREV2]: mk(PREV2, 3, 0, 0, 0),
+    [PREV3]: mk(PREV3, 9, 0, 0, 0),
   }
   const c = compareDigestWeeks(map, WEEK)
-  return !!c && c.prevWeekKey === '2026-W39' && c.captured.delta === 2
+  return !!c && c.prevWeekKey === PREV2 && c.captured.delta === 2
 })())
 
 check('explicit prevKey overrides auto-resolution', (() => {
   const map = {
     [WEEK]: mk(WEEK, 5, 0, 0, 0),
-    '2026-W39': mk('2026-W39', 3, 0, 0, 0),
-    '2026-W38': mk('2026-W38', 9, 0, 0, 0),
+    [PREV2]: mk(PREV2, 3, 0, 0, 0),
+    [PREV3]: mk(PREV3, 9, 0, 0, 0),
   }
-  const c = compareDigestWeeks(map, WEEK, '2026-W38')
-  return !!c && c.prevWeekKey === '2026-W38' && c.captured.delta === -4
+  const c = compareDigestWeeks(map, WEEK, PREV3)
+  return !!c && c.prevWeekKey === PREV3 && c.captured.delta === -4
 })())
 
 check('explicit prevKey equal to current is ignored → auto-resolve', (() => {
@@ -120,7 +126,7 @@ check('explicit prevKey equal to current is ignored → auto-resolve', (() => {
 })())
 
 check('later weeks are never picked as prev', (() => {
-  const map = { [WEEK]: mk(WEEK, 1, 0, 0, 0), '2026-W41': mk('2026-W41', 8, 0, 0, 0) }
+  const map = { [WEEK]: mk(WEEK, 1, 0, 0, 0), [NEXT]: mk(NEXT, 8, 0, 0, 0) }
   return compareDigestWeeks(map, WEEK) === null
 })())
 
@@ -137,11 +143,11 @@ check('stringified stats rejected → null (poisoned row)', (() => {
 check('null prev rows skipped during auto-resolution', (() => {
   const map = {
     [WEEK]: mk(WEEK, 4, 0, 0, 0),
-    '2026-W39': null as never,
-    '2026-W38': mk('2026-W38', 1, 0, 0, 0),
+    [PREV2]: null as never,
+    [PREV3]: mk(PREV3, 1, 0, 0, 0),
   }
   const c = compareDigestWeeks(map, WEEK)
-  return !!c && c.prevWeekKey === '2026-W38' && c.captured.delta === 3
+  return !!c && c.prevWeekKey === PREV3 && c.captured.delta === 3
 })())
 
 check('items counted across ALL sections; missing sections count 0', (() => {
@@ -171,8 +177,8 @@ check('fold is pure: repeated calls byte-equal, input untouched', (() => {
 s().resetDemo()
 check('fresh store → compareDigest null everywhere', s().compareDigest(WEEK) === null && s().compareDigest('') === null)
 
-const g1 = s().generateDigest(addWeeks(MON_NOON, -1)) /* W39 */
-const g2 = s().generateDigest(MON_NOON)               /* W40 */
+const g1 = s().generateDigest(addWeeks(MON_NOON, -1)) /* PREV */
+const g2 = s().generateDigest(MON_NOON)               /* WEEK */
 check('two real weeks generated for the e2e diff', g1.created && g2.created && g1.digest.weekKey === PREV && g2.digest.weekKey === WEEK)
 
 const timelineLen = s().timeline.length
@@ -198,13 +204,14 @@ check('single-week store → compare null (no earlier baseline)', (() => {
 })())
 
 check('explicit prevKey pointing at a later week still auto-resolves safely', (() => {
-  s().generateDigest(addWeeks(MON_NOON, -2)) /* W38 */
-  const c = s().compareDigest(WEEK, '2026-W41') /* W41 not stored */
-  return !!c && c.prevWeekKey === '2026-W38'
+  s().generateDigest(addWeeks(MON_NOON, -2)) /* PREV2 */
+  const c = s().compareDigest(WEEK, NEXT) /* NEXT not stored → ignored, closest earlier (PREV) wins over PREV2 */
+  return !!c && c.prevWeekKey === PREV
 })())
 
 check('clearing every earlier week drops comparison again', (() => {
-  s().clearDigest('2026-W38')
+  s().clearDigest(PREV)
+  s().clearDigest(PREV2)
   return s().compareDigest(WEEK) === null
 })())
 
