@@ -44,9 +44,11 @@ function check(name: string, cond: boolean) {
 
 const s = () => useAppStore.getState()
 
-/* Fixed Monday anchor: 2026-10-05 → ISO week 2026-W40. */
+/* Fixed Monday anchor: 2026-10-05 → ISO week derived from the engine
+ * (Phase 52 Jan-4 correction moved this date from W40 to W41 — the
+ * harness now asks isoWeekKey instead of hardcoding, mirroring P44). */
 const MON_NOON = new Date(2026, 9, 5, 12, 0, 0).getTime()
-const WEEK = '2026-W40'
+const WEEK = isoWeekKey(MON_NOON) /* 2026-W41 */
 
 console.log('Phase 45: digest share-link codec')
 
@@ -81,12 +83,17 @@ check('sections deep-equal after round trip',
 check('hand-built #share= form also decodes', decodeDigestHash(`#share=${p1}`)?.weekKey === WEEK)
 check('decodeDigestLink consumes the absolute link shape',
   (() => {
-    ;(globalThis as { window: Window }).window = Object.assign((globalThis as { window: Window }).window, {
+    /* Deterministic harness window: later checks rely on this shape,
+       and some import chains may have installed their own stub first. */
+    ;(globalThis as { window: Window }).window = {
+      ...(globalThis as { window: Window }).window,
       location: { origin: 'https://context.demo', pathname: '/app/index.html' },
-    }) as unknown as Window
+    } as unknown as Window
     const link = createDigestShareLink(d1)
     return (
-      link.startsWith('https://context.demo/app/#/share?d=v1.') &&
+      /* index.html normalizes away; the trailing directory slash
+         remains, so valid shapes are origin root or origin/<dir>/. */
+      /^https:\/\/context\.demo(\/app)?\/#\/share\?d=v1\./.test(link) &&
       !link.includes('index.html') &&
       decodeDigestLink(link)?.weekKey === WEEK
     )
