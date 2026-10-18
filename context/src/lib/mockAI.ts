@@ -1064,6 +1064,9 @@ export function encodeDigestPayload(d: WeeklyDigest): string {
  *  the Phase 16 SharePage consumes: `origin#/share?d=v1.…`. */
 export function createDigestShareLink(d: WeeklyDigest): string {
   if (typeof window === 'undefined') return ''
+  /* Strip the trailing index.html but keep the directory slash so
+     '/app/index.html' normalizes to '/app/' — dropping the '/' too
+     produced broken links like 'https://host/app#/share?d=…'. */
   const origin = window.location.origin + window.location.pathname.replace(/index\.html$/, '')
   return `${origin}#/share?d=${encodeDigestPayload(d)}`
 }

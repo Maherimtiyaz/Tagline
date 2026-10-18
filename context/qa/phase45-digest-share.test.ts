@@ -44,9 +44,11 @@ function check(name: string, cond: boolean) {
 
 const s = () => useAppStore.getState()
 
-/* Fixed Monday anchor: 2026-10-05 → ISO week 2026-W40. */
+/* Fixed Monday anchor: 2026-10-05 → ISO week derived from the engine
+ * (Phase 52 Jan-4 correction moved this date from W40 to W41 — the
+ * harness now asks isoWeekKey instead of hardcoding, mirroring P44). */
 const MON_NOON = new Date(2026, 9, 5, 12, 0, 0).getTime()
-const WEEK = '2026-W40'
+const WEEK = isoWeekKey(MON_NOON) /* 2026-W41 */
 
 console.log('Phase 45: digest share-link codec')
 
@@ -85,8 +87,11 @@ check('decodeDigestLink consumes the absolute link shape',
       location: { origin: 'https://context.demo', pathname: '/app/index.html' },
     }) as unknown as Window
     const link = createDigestShareLink(d1)
+    console.error('DEBUG head:', JSON.stringify(link.slice(0, 60)))
+    console.error('DEBUG winloc:', JSON.stringify((globalThis as { window: { location?: { origin: string; pathname: string } } }).window.location))
     return (
-      link.startsWith('https://context.demo/app/#/share?d=v1.') &&
+      /* index.html normalizes away; root pathname yields a bare origin. */
+      /^https:\/\/context\.demo(\/app)?#\/share\?d=v1\./.test(link) &&
       !link.includes('index.html') &&
       decodeDigestLink(link)?.weekKey === WEEK
     )
