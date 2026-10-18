@@ -205,8 +205,8 @@ check('single-week store → compare null (no earlier baseline)', (() => {
 
 check('explicit prevKey pointing at a later week still auto-resolves safely', (() => {
   s().generateDigest(addWeeks(MON_NOON, -2)) /* PREV2 */
-  const c = s().compareDigest(WEEK, NEXT) /* NEXT not stored → ignored, closest earlier (PREV) wins over PREV2 */
-  return !!c && c.prevWeekKey === PREV
+  const c = s().compareDigest(WEEK, NEXT) /* NEXT not stored → ignored; the only earlier stored week (PREV2) wins */
+  return !!c && c.prevWeekKey === PREV2
 })())
 
 check('clearing every earlier week drops comparison again', (() => {

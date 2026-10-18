@@ -83,15 +83,17 @@ check('sections deep-equal after round trip',
 check('hand-built #share= form also decodes', decodeDigestHash(`#share=${p1}`)?.weekKey === WEEK)
 check('decodeDigestLink consumes the absolute link shape',
   (() => {
-    ;(globalThis as { window: Window }).window = Object.assign((globalThis as { window: Window }).window, {
+    /* Deterministic harness window: later checks rely on this shape,
+       and some import chains may have installed their own stub first. */
+    ;(globalThis as { window: Window }).window = {
+      ...(globalThis as { window: Window }).window,
       location: { origin: 'https://context.demo', pathname: '/app/index.html' },
-    }) as unknown as Window
+    } as unknown as Window
     const link = createDigestShareLink(d1)
-    console.error('DEBUG head:', JSON.stringify(link.slice(0, 60)))
-    console.error('DEBUG winloc:', JSON.stringify((globalThis as { window: { location?: { origin: string; pathname: string } } }).window.location))
     return (
-      /* index.html normalizes away; root pathname yields a bare origin. */
-      /^https:\/\/context\.demo(\/app)?#\/share\?d=v1\./.test(link) &&
+      /* index.html normalizes away; the trailing directory slash
+         remains, so valid shapes are origin root or origin/<dir>/. */
+      /^https:\/\/context\.demo(\/app)?\/#\/share\?d=v1\./.test(link) &&
       !link.includes('index.html') &&
       decodeDigestLink(link)?.weekKey === WEEK
     )
