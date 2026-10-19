@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from
 import { AppShell } from './components/layout/AppShell'
 import { Onboarding } from './components/layout/Onboarding'
 import { CommandPalette } from './components/ui/CommandPalette'
+import { ShortcutHelpOverlay } from './components/ui/ShortcutHelpOverlay'
 import { ToastViewport } from './components/ui/Toast'
 import { useAppStore } from './lib/store'
 import { TEMPLATES } from './data/mock'
@@ -51,6 +52,9 @@ function Overlays() {
     <>
       <Onboarding />
       <CommandPalette onNavigate={navigate} />
+      {/* Phase 61: "?" shortcut help is global — mounted once beside the
+          palette so it works on Digest/Collections/History routes too. */}
+      <ShortcutHelpOverlay />
       <ToastViewport />
     </>
   )

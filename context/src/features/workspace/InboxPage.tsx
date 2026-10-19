@@ -39,6 +39,9 @@ function Highlight({ text, q }: { text: string; q: string }) {
   )
 }
 
+/* Phase 61 — the shortcut table + help overlay moved to
+   components/ui/ShortcutHelpOverlay.tsx (single global source of truth). */
+
 const VIEW_META: Record<InboxView, { title: string; blurb: string; emptyTitle: string; emptyBody: string }> = {
   inbox: {
     title: 'Inbox',
@@ -67,6 +70,9 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
   const transform = useAppStore((s) => s.transform)
   const deleteThought = useAppStore((s) => s.deleteThought)
   const setPalette = useAppStore((s) => s.setPalette)
+  /* Phase 61: help overlay open state moved to the store so the global
+     ShortcutHelpOverlay (mounted in App) owns it on every route. */
+  const setHelp = useAppStore((s) => s.setHelp)
   /* Phase 20 — multi-select (spec §35). Selection lives in the store so
      it survives view switches; actions act on ids, never indices. */
   const selectedIds = useAppStore((s) => s.selectedIds)
@@ -77,6 +83,9 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
   const reduced = useReducedMotion()
   const [query, setQuery] = useState('')
   const searchRef = useRef<HTMLInputElement>(null)
+  /* Phase 61 — "?" toggles the GLOBAL help overlay (store state, owned by
+     ShortcutHelpOverlay mounted in App). */
+  const paletteOpen = useAppStore((s) => s.paletteOpen)
 
   /* Hydration/loading state (QA §71): the persisted store rehydrates from
      localStorage a beat after first paint — show skeleton cards instead of
@@ -160,16 +169,15 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
          contenteditable hosts and in-flight IME compositions are now
          covered too. Escape still clears the query from anywhere,
          matching the pre-Phase-60 contract. */
-      if (matchKeyCombo(e, 'Escape', false)) { setQuery(''); setHelpOpen(false); return }
+      if (matchKeyCombo(e, 'Escape', false)) { setQuery(''); setHelp(false); return }
       if (shouldIgnoreShortcut(e.target, e)) return
       if (matchKeyCombo(e, '/', false)) { e.preventDefault(); searchRef.current?.focus() }
       else if (matchKeyCombo(e, 'n', false)) { e.preventDefault(); onNew() }
-      else if (matchKeyCombo(e, '?', false)) { e.preventDefault(); setHelpOpen((v) => !v) }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [paletteOpen])
 
   /* Palette "Search thoughts and outputs" hands the query to us (spec §33). */
   const searchQuery = useAppStore((s) => s.searchQuery)
@@ -456,7 +464,14 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
               ),
             )}
             <p className={cn('flex items-center gap-1.5 pt-1 font-mono text-3xs text-ink-subtle')}>
-              <CornerDownLeft size={10} aria-hidden /> click a thought to open the editor · press N for a new one
+              <CornerDownLeft size={10} aria-hidden /> click a thought to open the editor · press N for a new one ·{' '}
+              <button
+                type="button"
+                onClick={() => setHelp(true)}
+                className="underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-line"
+              >
+                press ? for shortcuts
+              </button>
             </p>
           </div>
         )}
@@ -465,6 +480,8 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
       {/* Phase 20: floating bulk-action bar (spec §35) */}
       <BulkActionBar ids={visibleSelected} />
 
+      {/* Phase 61: the shortcut help overlay moved to App.tsx so "?" works
+          on every route; this button stays as the discoverable entry. */}
       <button type="button" className="sr-only" onClick={() => setPalette(true)}>Open command palette</button>
     </div>
   )

@@ -360,6 +360,8 @@ interface AppState {
   userCollections: Collection[]
   selectedThoughtId: string | null
   paletteOpen: boolean
+  /** Phase 61: global "?" shortcut-help overlay (transient UI state). */
+  helpOpen: boolean
   toasts: Toast[]
   inboxView: InboxView
   /** Global search query — empty means no active search (spec §33). */
@@ -376,6 +378,9 @@ interface AppState {
   setPalette: (open: boolean) => void
   /** Phase 60: flip for the global Mod+K palette listener. */
   togglePalette: () => void
+  /** Phase 61: open/close the global shortcut help overlay. */
+  setHelp: (open: boolean) => void
+  toggleHelp: () => void
   setInboxView: (view: InboxView) => void
   dismissOnboarding: () => void
   /** Re-show the first-run welcome card (Settings → Replay welcome tour). */
@@ -562,6 +567,7 @@ export const useAppStore = create<AppState>()(
       selectedThoughtId: null,
       selectedIds: [],
       paletteOpen: false,
+      helpOpen: false,
       toasts: [],
       inboxView: 'inbox',
       searchQuery: '',
@@ -882,6 +888,10 @@ export const useAppStore = create<AppState>()(
       /* Phase 60: single flip so the global keydown listener and the
          sidebar button share one action; idempotent w.r.t. toasts. */
       togglePalette: () => set((s) => ({ paletteOpen: !s.paletteOpen })),
+      /* Phase 61: help overlay open/close — transient, never persisted
+         or cross-tab synced (same policy as paletteOpen). */
+      setHelp: (open) => set({ helpOpen: open }),
+      toggleHelp: () => set((s) => ({ helpOpen: !s.helpOpen })),
       setInboxView: (view) => set({ inboxView: view }),
       dismissOnboarding: () => set({ onboardingSeen: true }),
       showOnboarding: () => set({ onboardingSeen: false }),
