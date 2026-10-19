@@ -139,3 +139,20 @@ Commit `20325c5` shipped the core (types, normalizeTag/addTag/removeTag/renameTa
 - Preview sweep: all 8 routes → 200
 
 **Result: Phase 23 complete.** Two initial test failures were harness bugs (seeded "Launch" tag on th-launch legitimately joins renameTag scope; corrected expected count 2→3), not product defects.
+
+## Phase 60 — Keyboard UX Layer (QA)
+
+**Scope:** `src/lib/hotkeys.ts` (pure helpers), global Mod+K palette toggle (AppShell + store `togglePalette`), Inbox ? help overlay + hardened bare-key guards, ThoughtEditor Mod+S save.
+
+**Harness:** `qa/phase60-hotkeys.test.ts` — 37 checks, all passing:
+- Platform detection ×5 (Mac/iPhone UA true; Windows/Linux false; Node-inert fallback)
+- Shortcut formatting ×7 (⌘ vs Ctrl rendering, literal Cmd→Meta off-Mac, Shift symbol, multi-char keys pass through)
+- Combo matching ×12 (Mod resolves per platform, exact-modifier enforcement rejects Ctrl+Alt+K, case-insensitive keys, '?' via Shift+/ tolerated on bare specs, Shift required when in spec)
+- Typing-context guards ×6 (INPUT/TEXTAREA/SELECT lowercase tags, contenteditable, IME Process state, null target)
+- Static app-wiring ×7 (global listener registered, help overlay state, guard usage, Mod+S + Mod+Enter handlers, palette Escape migration)
+
+**Full regression sweep (all green):** P18 17 · P19 22 · P21 27 · P22 19 · P23 21 · P24 16 · P25 24 · P26 19 · P28 21 · P29 22 · P30 35 · P31 24 · P34 23 · P37 14 · P41 57 · P42 29 · P43 30 · P44 31 · P45 25 · P50 25 · **P60 37** — 21/21 harnesses.
+
+**Build/Lint:** `tsc -b && vite build` clean (✓ 1.46s); oxlint 0 errors (3 hook-style warnings consistent with pre-existing baseline).
+
+**Result: Phase 60 complete.** The known fixture drift from Phases 52–59 (P22/P25/P26/P43/P44/P45) is fully retired — no failing harnesses remain.

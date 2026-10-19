@@ -217,3 +217,23 @@ Six defects found & fixed: dead `--duration-normal` token; missing inbox loading
 - ✅ Regression vs recorded baseline: P18 17/17 · P19 22/22 · P21 27/27 · P23 21/21 · P24 16/16 · P28 21/21 · P29 22/22 · P30 35/35 · P31 24/24 · P34 23/23 · P37 14/14; known drift unchanged (P22 16/18 · P25 19/24 · P26 11/19 — stale seeded-starred assumptions from Phase 28 mock-data edits)
 
 **Files touched:** `src/data/types.ts`, `src/lib/mockAI.ts`, `src/lib/store.ts`, `src/features/workspace/HistoryPage.tsx`, `qa/phase41-digest-export.test.ts`, `PHASES_REPORT.md`
+
+### Phase 52–59 — Digest QA Hardening & ISO Week Corrections ✅ SHIPPED
+- `isoWeekKey` corrected to the ISO-8601 spec (Jan-4 anchor) in `src/lib/mockAI.ts`; `weekStartFromKey` DST guard fixed so week navigation returns local Monday 00:00 regardless of timezone. Verified stable across DST boundaries.
+- Download helpers (`downloadDigestEmail`/`Markdown`) hardened with `globalThis.setTimeout` — Node-inert-safe, fixing the P50 harness crash.
+- Full digest harness family recalibrated against engine-derived week keys and Phase-28 seeded data: P41 57/57 · P42 29/29 · P43 30/30 · P44 31/31 · P45 25/25 · P50 25/25. Stale hardcoded week fixtures replaced with live `isoWeekKey` calls; debug probes removed from `qa/`.
+- P22/P25/P26 drift resolved by aligning expectations with the seeded baseline (pin/star ordering, sidebar counts).
+
+**Files touched:** `src/lib/mockAI.ts`, `qa/phase22-pin.test.ts`, `qa/phase25-star.test.ts`, `qa/phase26-sidebar.test.ts`, `qa/phase43-digest-email-batch.test.ts`, `qa/phase44-digest-compare.test.ts`, `qa/phase45-digest-share.test.ts`, `qa/phase50-digest-eml.test.ts`
+
+### Phase 60 — Keyboard UX Layer (extension) ✅ SHIPPED
+- New pure, framework-free helper module `src/lib/hotkeys.ts`: `isMacPlatform` (UA sniff, Node-inert), `formatShortcut` ('Mod+K' → '⌘K' on Mac / 'Ctrl+K' elsewhere), `matchKeyCombo` (exact-modifier matching — stray Ctrl+Alt never fires; bare specs tolerate Shift state so '?' via Shift+/ works), `shouldIgnoreShortcut` (typing-context guard: INPUT/TEXTAREA/SELECT/contenteditable + IME composition).
+- **Global palette shortcut:** AppShell registers a window keydown listener for Mod+K (⌘K/Ctrl+K) toggling the command palette via new store action `togglePalette` (single flip shared with the sidebar button).
+- **Inbox shortcuts hardened:** existing n / / / Escape handlers routed through `lib/hotkeys`; contenteditable and mid-IME keystrokes no longer trigger them. New **? help overlay**: platform-aware shortcut table (AnimatePresence dialog, role=dialog aria-modal, backdrop-click + Escape dismiss, reduced-motion aware) plus a discoverable "press ? for shortcuts" link in the list footer.
+- **Editor save shortcut:** ThoughtEditor gained Mod+S (⌘S/Ctrl+S) — commits the local draft to the store row, clears the autosave key, toasts "Draft saved", and preventDefaults the native browser save-page dialog. Existing Mod+Enter transform shortcut untouched.
+- CommandPalette Escape handling migrated onto the shared matcher.
+- ✅ `qa/phase60-hotkeys.test.ts`: 37/37 pass (platform detection ×5, formatting ×7, combo matching incl. exact-modifier and case rules ×12, typing guards ×6, static app-wiring checks ×7)
+- ✅ Full QA sweep green: all 21 harnesses pass (P18 17 · P19 22 · P21 27 · P22 19 · P23 21 · P24 16 · P25 24 · P26 19 · P28 21 · P29 22 · P30 35 · P31 24 · P34 23 · P37 14 · P41 57 · P42 29 · P43 30 · P44 31 · P45 25 · P50 25 · P60 37)
+- ✅ Build clean (`tsc -b && vite build`, ✓ 1.46s); lint 0 errors (3 pre-existing-style warnings)
+
+**Files touched:** `src/lib/hotkeys.ts`, `src/lib/store.ts`, `src/components/layout/AppShell.tsx`, `src/components/ui/CommandPalette.tsx`, `src/features/workspace/InboxPage.tsx`, `src/features/thoughts/ThoughtEditor.tsx`, `qa/phase60-hotkeys.test.ts`, `PHASES_REPORT.md`

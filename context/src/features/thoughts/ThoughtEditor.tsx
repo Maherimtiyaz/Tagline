@@ -145,6 +145,15 @@ export function ThoughtEditor({ thoughtId, onClose, initialType }: { thoughtId: 
       e.preventDefault()
       if (draft.trim()) { commitDraft(draft); runUnderstand(undefined, draft) }
     }
+    /* Phase 60 — Mod+S commits the local draft to the store row (and
+       clears the autosave key) with a toast, so "save" is explicit even
+       though autosave already mirrors text every 800ms. preventDefault
+       stops the browser's native Save-page dialog on Windows/Linux. */
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+      e.preventDefault()
+      commitDraft(draft)
+      pushToast('Draft saved', 'success')
+    }
     if (e.key === 'Escape') {
       /* ESC dismisses the slash-command menu first, then closes. */
       if (slash !== null) { setSlash(null); return }
