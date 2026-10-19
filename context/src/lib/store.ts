@@ -374,6 +374,8 @@ interface AppState {
   /* derived helpers */
   select: (id: string | null) => void
   setPalette: (open: boolean) => void
+  /** Phase 60: flip for the global Mod+K palette listener. */
+  togglePalette: () => void
   setInboxView: (view: InboxView) => void
   dismissOnboarding: () => void
   /** Re-show the first-run welcome card (Settings → Replay welcome tour). */
@@ -877,6 +879,9 @@ export const useAppStore = create<AppState>()(
       },
 
       setPalette: (open) => set({ paletteOpen: open }),
+      /* Phase 60: single flip so the global keydown listener and the
+         sidebar button share one action; idempotent w.r.t. toasts. */
+      togglePalette: () => set((s) => ({ paletteOpen: !s.paletteOpen })),
       setInboxView: (view) => set({ inboxView: view }),
       dismissOnboarding: () => set({ onboardingSeen: true }),
       showOnboarding: () => set({ onboardingSeen: false }),

@@ -18,10 +18,13 @@ import { useAppStore } from '../../lib/store'
 import { useThemeStore } from '../../lib/theme'
 import { cn } from '../../lib/cn'
 import { Kbd } from './Kbd'
+import { matchKeyCombo } from '../../lib/hotkeys'
 
 /* ============================================================
-   Command palette (⌘K). Keyboard-first: ↑↓ navigate, Enter run,
-   Esc close. Sections: actions, transform targets, navigation.
+   Command palette (Mod+K — ⌘K on Mac, Ctrl+K elsewhere; the
+   global listener lives in AppShell, Phase 60). Keyboard-first:
+   ↑↓ navigate, Enter run, Esc close. Sections: actions,
+   transform targets, navigation.
    ============================================================ */
 
 interface Command {
@@ -226,7 +229,9 @@ export function CommandPalette({ onNavigate }: { onNavigate?: (path: string) => 
     setCollectionDraft('')
     setTimeout(() => inputRef.current?.focus(), 10)
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false)
+      /* Phase 60: routed through the shared matcher so the spec stays
+         the single source of truth for what "Escape" means. */
+      if (matchKeyCombo(e, 'Escape', false)) setOpen(false)
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
