@@ -15,6 +15,7 @@ import { OutputEditor } from '../../components/ui/OutputEditor'
 import { VoiceCapture } from '../voice/VoiceCapture'
 import { cn } from '../../lib/cn'
 import { Kbd } from '../../components/ui/Kbd'
+import { isMacPlatform, matchKeyCombo } from '../../lib/hotkeys'
 
 /* ============================================================
    ThoughtEditor — the focused workspace flow:
@@ -141,7 +142,12 @@ export function ThoughtEditor({ thoughtId, onClose, initialType }: { thoughtId: 
   }
 
   const onKeyDown = (e: React.KeyboardEvent) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+    /* Phase 61 — route the editor shortcuts through lib/hotkeys so
+       modifier semantics match every other surface: 'Mod' resolves to
+       Cmd on Mac / Ctrl elsewhere, stray Alt+… never fires, and exact-
+       modifier matching replaces the old `(metaKey || ctrlKey)` OR. */
+    const mac = isMacPlatform()
+    if (matchKeyCombo(e, 'Mod+Enter', mac)) {
       e.preventDefault()
       if (draft.trim()) { commitDraft(draft); runUnderstand(undefined, draft) }
     }
@@ -149,7 +155,7 @@ export function ThoughtEditor({ thoughtId, onClose, initialType }: { thoughtId: 
        clears the autosave key) with a toast, so "save" is explicit even
        though autosave already mirrors text every 800ms. preventDefault
        stops the browser's native Save-page dialog on Windows/Linux. */
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+    if (matchKeyCombo(e, 'Mod+s', mac)) {
       e.preventDefault()
       commitDraft(draft)
       pushToast('Draft saved', 'success')
