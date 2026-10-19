@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
   Archive,
@@ -24,6 +24,7 @@ import { useThemeStore } from '../../lib/theme'
 import { COLLECTIONS } from '../../data/mock'
 import { Kbd } from '../ui/Kbd'
 import { cn } from '../../lib/cn'
+import { formatShortcut, isMacPlatform, matchKeyCombo } from '../../lib/hotkeys'
 
 /* ============================================================
    App shell — collapsible sidebar + routed content. Mobile
@@ -62,11 +63,31 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const thoughts = useAppStore((s) => s.thoughts)
   const userCollections = useAppStore((s) => s.userCollections)
   const setPalette = useAppStore((s) => s.setPalette)
+  const togglePalette = useAppStore((s) => s.togglePalette)
   const resetDemo = useAppStore((s) => s.resetDemo)
   const theme = useThemeStore((s) => s.theme)
   const toggleTheme = useThemeStore((s) => s.toggleTheme)
   const navigate = useNavigate()
   const location = useLocation()
+
+  /* Phase 60 — global palette shortcut. Mod+K (⌘K on Mac, Ctrl+K
+     elsewhere) toggles the command palette from ANY focus context,
+     including inside text fields — that is exactly where users reach
+     for it. Registered in the capture phase so a page-level keydown
+     handler cannot swallow it first. Guarded by `typeof window` so
+     Node/SSR/test imports stay inert. */
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const mac = isMacPlatform()
+    const onKey = (e: KeyboardEvent) => {
+      if (matchKeyCombo(e, 'Mod+k', mac)) {
+        e.preventDefault()
+        togglePalette()
+      }
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [togglePalette])
 
   const rawCount = thoughts.filter((t) => t.status === 'raw').length
   const draftCount = thoughts.filter((t) => t.status !== 'archived' && (t.text.trim() === '' || (t.status === 'raw' && t.outputs.length === 0))).length
@@ -265,7 +286,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             {!collapsed && (
               <>
                 <span className="flex-1 text-left">Commands</span>
-                <Kbd keys={['⌘', 'K']} />
+                {/* Phase 60: platform-aware — ⌘K on Mac, Ctrl+K elsewhere. */}
+                <Kbd keys={[formatShortcut('Mod+k', isMacPlatform())]} />
               </>
             )}
           </button>

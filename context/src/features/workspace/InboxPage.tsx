@@ -13,13 +13,17 @@ import { Skeleton } from '../../components/ui/Skeleton'
 import { Badge } from '../../components/ui/Badge'
 import { cn } from '../../lib/cn'
 import { priorityGroups } from '../../lib/sort'
+import { matchKeyCombo, shouldIgnoreShortcut } from '../../lib/hotkeys'
 
 /* ============================================================
    Inbox — where raw thoughts live. One list screen drives three
    sidebar views (spec §18): Inbox (unprocessed), Workspace
    (everything active), Drafts (empty or untouched new captures).
    Global search over thoughts + outputs with highlighted matches
-   (spec §33). "N" focuses the new-thought flow; "/" focuses search.
+   (spec §33). "N" focuses the new-thought flow; "/" focuses
+   search; "?" opens the shortcut help overlay (Phase 60). All
+   bare-key shortcuts route through lib/hotkeys so typing in a
+   field, contenteditable, or mid-IME never triggers them.
    ============================================================ */
 
 function Highlight({ text, q }: { text: string; q: string }) {
@@ -152,11 +156,15 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return
-      if (e.key === '/') { e.preventDefault(); searchRef.current?.focus() }
-      else if (e.key === 'n' || e.key === 'N') { e.preventDefault(); onNew() }
-      else if (e.key === 'Escape') setQuery('')
+      /* Phase 60: shared guards replace the hand-rolled tagName check —
+         contenteditable hosts and in-flight IME compositions are now
+         covered too. Escape still clears the query from anywhere,
+         matching the pre-Phase-60 contract. */
+      if (matchKeyCombo(e, 'Escape', false)) { setQuery(''); setHelpOpen(false); return }
+      if (shouldIgnoreShortcut(e.target, e)) return
+      if (matchKeyCombo(e, '/', false)) { e.preventDefault(); searchRef.current?.focus() }
+      else if (matchKeyCombo(e, 'n', false)) { e.preventDefault(); onNew() }
+      else if (matchKeyCombo(e, '?', false)) { e.preventDefault(); setHelpOpen((v) => !v) }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
