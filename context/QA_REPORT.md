@@ -156,3 +156,19 @@ Commit `20325c5` shipped the core (types, normalizeTag/addTag/removeTag/renameTa
 **Build/Lint:** `tsc -b && vite build` clean (✓ 1.46s); oxlint 0 errors (3 hook-style warnings consistent with pre-existing baseline).
 
 **Result: Phase 60 complete.** The known fixture drift from Phases 52–59 (P22/P25/P26/P43/P44/P45) is fully retired — no failing harnesses remain.
+
+## Phase 61/62 — Global Shortcut Overlay + Verification (QA)
+
+**Scope:** Phase 61 moved the ? help dialog out of InboxPage into a globally-mounted `ShortcutHelpOverlay` (store-backed `helpOpen`/`setHelp`/`toggleHelp`) and consolidated ThoughtEditor modifiers onto `matchKeyCombo`. Phase 62 verified the refactor, fixed an Escape-dismiss gap on non-Inbox routes, and recalibrated stale P60 wiring assertions.
+
+**Harnesses:**
+- `qa/phase60-hotkeys.test.ts` — recalibrated to the new architecture: **39/39 pass** (App mounts overlay, overlay reads store state, editor uses matcher for Mod+s/Mod+Enter with no hand-rolled `(e.metaKey || e.ctrlKey)` left).
+- `qa/phase62-global-shortcuts.test.ts` — **new, 26/26 pass**: live store transitions (toggleHelp/setHelp, subscribe-exactly-once), overlay wiring (? toggle, typing guard, Escape dismiss, role=dialog/aria-modal, platform-aware hints), Inbox regression guards (no stale local help state), palette/shell matcher checks, and a spec-table consistency check proving every advertised shortcut has source wiring evidence.
+
+**Defect found & fixed:** the overlay advertises "Escape closes overlays," but only InboxPage handled Escape — pressing it on Digest/Collections/History did nothing. The overlay now handles its own Escape dismissal via the shared matcher.
+
+**Full regression sweep (all green):** P18 17 · P19 22 · P21 27 · P22 19 · P23 21 · P24 16 · P25 24 · P26 19 · P28 21 · P29 22 · P30 35 · P31 24 · P34 23 · P37 14 · P41 57 · P42 29 · P43 30 · P44 31 · P45 25 · P50 25 · **P60 39** · **P62 26** — 22/22 harnesses.
+
+**Build/Lint:** `tsc -b && vite build` clean (✓ 1.38s); oxlint 0 errors (12 pre-existing-style warnings).
+
+**Result: Phases 61–62 complete.** Keyboard UX layer is global, verified, and drift-free.

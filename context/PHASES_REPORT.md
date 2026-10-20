@@ -237,3 +237,21 @@ Six defects found & fixed: dead `--duration-normal` token; missing inbox loading
 - ✅ Build clean (`tsc -b && vite build`, ✓ 1.46s); lint 0 errors (3 pre-existing-style warnings)
 
 **Files touched:** `src/lib/hotkeys.ts`, `src/lib/store.ts`, `src/components/layout/AppShell.tsx`, `src/components/ui/CommandPalette.tsx`, `src/features/workspace/InboxPage.tsx`, `src/features/thoughts/ThoughtEditor.tsx`, `qa/phase60-hotkeys.test.ts`, `PHASES_REPORT.md`
+
+### Phase 61 — Global Shortcut Help Overlay (refactor) ✅ SHIPPED
+- Extracted the ? help dialog from InboxPage into a dedicated `src/components/ui/ShortcutHelpOverlay.tsx`, mounted once in App's `<Overlays>` so shortcut help works on every /app route (Digest, Collections, History, Templates, Settings…).
+- Open state moved to the store as transient UI state: `helpOpen` + `setHelp(open)` / `toggleHelp()` actions (not persisted; excluded from the cross-tab broadcast envelope per Phase-31 invariants).
+- The overlay owns its own window keydown listener: bare `?` toggles (guarded by `shouldIgnoreShortcut` + palette-open check), backdrop click and X button dismiss.
+- ThoughtEditor hand-rolled `(e.metaKey || e.ctrlKey)` checks consolidated onto `matchKeyCombo` (`Mod+Enter`, `Mod+s`) with a single `isMacPlatform()` computation — completing the last Phase-52 carryover item.
+- InboxPage local dialog removed (~60 lines); Escape-clears-query behavior retained via the shared matcher.
+
+**Files touched:** `src/App.tsx`, `src/components/ui/ShortcutHelpOverlay.tsx` (new), `src/lib/store.ts`, `src/features/workspace/InboxPage.tsx`, `src/features/thoughts/ThoughtEditor.tsx`
+
+### Phase 62 — Keyboard UX Verification & Hardening ✅ SHIPPED
+- Fixed a real gap surfaced by the new harness: the global overlay documented "Escape closes overlays" but only InboxPage handled Escape — pressing Escape on Digest/Collections routes did nothing. `ShortcutHelpOverlay` now handles Escape itself while open (via `matchKeyCombo(e, 'Escape', false)`), making the advertised behavior true on every route.
+- Recalibrated `qa/phase60-hotkeys.test.ts` static-wiring assertions to the Phase-61 architecture (overlay/store/editor-matcher checks replaced stale Inbox-local-dialog and hand-rolled-modifier regexes): 39/39 pass.
+- New `qa/phase62-global-shortcuts.test.ts`: 26 checks — live store transitions (toggleHelp/setHelp/subscribe-exactly-once), overlay wiring (store read, ? toggle, typing guard, Escape dismiss, dialog a11y roles, platform-aware hints), App mount point, Inbox regression guards (no stale local state), editor/palette/shell matcher consolidation, and a spec-table consistency check proving every shortcut advertised in the help overlay has wiring evidence in source.
+- ✅ Full QA sweep green: all 22 harnesses pass (P18 17 · P19 22 · P21 27 · P22 19 · P23 21 · P24 16 · P25 24 · P26 19 · P28 21 · P29 22 · P30 35 · P31 24 · P34 23 · P37 14 · P41 57 · P42 29 · P43 30 · P44 31 · P45 25 · P50 25 · P60 39 · P62 26)
+- ✅ Build clean (`tsc -b && vite build`, ✓ 1.38s); oxlint 0 errors (12 pre-existing-style warnings)
+
+**Files touched:** `src/components/ui/ShortcutHelpOverlay.tsx`, `qa/phase60-hotkeys.test.ts`, `qa/phase62-global-shortcuts.test.ts` (new), `PHASES_REPORT.md`, `QA_REPORT.md`

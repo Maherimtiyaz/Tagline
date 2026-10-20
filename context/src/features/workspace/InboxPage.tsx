@@ -13,7 +13,7 @@ import { Skeleton } from '../../components/ui/Skeleton'
 import { Badge } from '../../components/ui/Badge'
 import { cn } from '../../lib/cn'
 import { priorityGroups } from '../../lib/sort'
-import { matchKeyCombo, shouldIgnoreShortcut } from '../../lib/hotkeys'
+import { matchKeyCombo, resolveBinding, shouldIgnoreShortcut } from '../../lib/hotkeys'
 
 /* ============================================================
    Inbox — where raw thoughts live. One list screen drives three
@@ -86,6 +86,8 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
   /* Phase 61 — "?" toggles the GLOBAL help overlay (store state, owned by
      ShortcutHelpOverlay mounted in App). */
   const paletteOpen = useAppStore((s) => s.paletteOpen)
+  /* Phase 63: user-remappable specs feed the inbox keydown handler. */
+  const keybindings = useAppStore((s) => s.keybindings)
 
   /* Hydration/loading state (QA §71): the persisted store rehydrates from
      localStorage a beat after first paint — show skeleton cards instead of
@@ -168,16 +170,17 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
       /* Phase 60: shared guards replace the hand-rolled tagName check —
          contenteditable hosts and in-flight IME compositions are now
          covered too. Escape still clears the query from anywhere,
-         matching the pre-Phase-60 contract. */
-      if (matchKeyCombo(e, 'Escape', false)) { setQuery(''); setHelp(false); return }
+         matching the pre-Phase-60 contract. Phase 63: specs resolve
+         through the user's keybinding remaps. */
+      if (matchKeyCombo(e, resolveBinding('inbox.clear', keybindings), false)) { setQuery(''); setHelp(false); return }
       if (shouldIgnoreShortcut(e.target, e)) return
-      if (matchKeyCombo(e, '/', false)) { e.preventDefault(); searchRef.current?.focus() }
-      else if (matchKeyCombo(e, 'n', false)) { e.preventDefault(); onNew() }
+      if (matchKeyCombo(e, resolveBinding('inbox.search', keybindings), false)) { e.preventDefault(); searchRef.current?.focus() }
+      else if (matchKeyCombo(e, resolveBinding('inbox.new', keybindings), false)) { e.preventDefault(); onNew() }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paletteOpen])
+  }, [paletteOpen, keybindings])
 
   /* Palette "Search thoughts and outputs" hands the query to us (spec §33). */
   const searchQuery = useAppStore((s) => s.searchQuery)

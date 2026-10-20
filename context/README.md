@@ -19,7 +19,7 @@ Pure Node/tsx test files in `qa/` (no browser needed). Run one or all:
 
 ```bash
 npx tsx qa/phase60-hotkeys.test.ts
-for f in qa/phase*.test.ts; do npx tsx "$f"; done   # full sweep (21 harnesses)
+for f in qa/phase*.test.ts; do npx tsx "$f"; done   # full sweep (22 harnesses)
 ```
 
 See `QA_REPORT.md` for per-phase verification results and `PHASES_REPORT.md`
@@ -33,9 +33,9 @@ for the implementation history.
   transform pipeline animation, autosave + draft recovery, Mod+S save, Mod+Enter transform.
 - **Command palette** (`src/components/ui/CommandPalette.tsx`) — global Mod+K
   (⌘K / Ctrl+K) navigation, tag deep links, actions.
-- **Keyboard UX layer** (`src/lib/hotkeys.ts`, Phase 60) — platform-aware shortcut
-  matching/formatting helpers shared by every surface; typing-context guards;
-  press **?** in the Inbox for the shortcut help overlay.
+- **Keyboard UX layer** (`src/lib/hotkeys.ts`, Phases 60–62) — platform-aware shortcut
+  matching/formatting helpers shared by every surface; typing-context guards; press
+  **?** anywhere in /app for the global shortcut help overlay (Escape/backdrop to close).
 - **Weekly digest** (`src/features/digest`, `src/lib/mockAI.ts`) — ISO week math
   (DST-safe), markdown/EML/email export, share links, week-over-week compare.
 - **Collections, insights, history, settings** (`src/features/*`).
@@ -53,12 +53,13 @@ for the implementation history.
 ## Things left to complete
 
 - [ ] Browser-level E2E coverage for keyboard flows (help overlay focus trap,
-      palette open/close cycles) — current P60 harness is pure-Node + static wiring only.
-- [ ] Move the ? help overlay from InboxPage into AppShell so shortcuts are
-      discoverable on Digest/Collections/History routes too.
+      palette open/close cycles) — current P60/P62 harnesses are pure-Node +
+      static wiring only.
 - [ ] User-customizable keybindings (store-backed remapping of bare-key specs).
-- [ ] Replace remaining hand-rolled `(e.metaKey || e.ctrlKey)` checks in
-      ThoughtEditor with `matchKeyCombo` once React KeyboardEvent bridging is added.
 - [ ] Real backend/API layer (everything is mock AI + localStorage today).
 - [ ] Production a11y audit: screen-reader announcements for palette/toast hotkeys.
-- [ ] Clean up the 3 pre-existing react-hooks lint warnings (set-state-in-effect).
+- [ ] Clean up pre-existing react-hooks lint warnings (set-state-in-effect).
+
+Done in Phases 61–62 (previously listed here): ? help overlay promoted from
+InboxPage to a global `ShortcutHelpOverlay` mounted in App, and ThoughtEditor's
+hand-rolled `(e.metaKey || e.ctrlKey)` checks consolidated onto `matchKeyCombo`.

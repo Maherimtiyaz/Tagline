@@ -70,13 +70,22 @@ check('IME composition ignored', shouldIgnoreShortcut(mk('div'), { getModifierSt
 console.log('— App wiring (static) —')
 const shell = src('src/components/layout/AppShell.tsx')
 check('AppShell listens for global Mod+k', /matchKeyCombo\(e,\s*'Mod\+k'/.test(shell))
+/* Phase 61 refactor: the "?" help dialog moved out of InboxPage into a
+   global ShortcutHelpOverlay mounted in App, with open state in the store.
+   ThoughtEditor hand-rolled modifier checks were consolidated onto the
+   shared matchKeyCombo matcher. Assertions recalibrated to that reality. */
+const app = src('src/App.tsx')
+check('App mounts global ShortcutHelpOverlay', app.includes('<ShortcutHelpOverlay />'))
+const overlay = src('src/components/ui/ShortcutHelpOverlay.tsx')
+check('Overlay reads store helpOpen state', /useAppStore\(\(s\) => s\.helpOpen\)/.test(overlay))
+const store = src('src/lib/store.ts')
+check('Store exposes helpOpen + toggleHelp/setHelp', /helpOpen: boolean/.test(store) && /toggleHelp: \(\) =>/.test(store) && /setHelp: /.test(store))
 const inbox = src('src/features/workspace/InboxPage.tsx')
-check('InboxPage has help overlay state', /setHelpOpen/.test(inbox) && /helpOpen &&/.test(inbox))
 check('InboxPage guards typing via shouldIgnoreShortcut', inbox.includes('shouldIgnoreShortcut(e.target, e)'))
 check('InboxPage registers window keydown listener', /window\.addEventListener\('keydown'/.test(inbox))
 const editor = src('src/features/thoughts/ThoughtEditor.tsx')
-check('ThoughtEditor handles Mod+S save', /\(e\.metaKey \|\| e\.ctrlKey\) && e\.key\.toLowerCase\(\) === 's'/.test(editor))
-check('ThoughtEditor still handles Mod+Enter', /\(e\.metaKey \|\| e\.ctrlKey\) && e\.key === 'Enter'/.test(editor))
+check('ThoughtEditor handles Mod+S save via matcher', /matchKeyCombo\(e,\s*'Mod\+s'/.test(editor))
+check('ThoughtEditor still handles Mod+Enter via matcher', /matchKeyCombo\(e,\s*'Mod\+Enter'/.test(editor))
 const palette = src('src/components/ui/CommandPalette.tsx')
 check('CommandPalette uses shared matcher for Escape', palette.includes("matchKeyCombo(e, 'Escape', false)"))
 
