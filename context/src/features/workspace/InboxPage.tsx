@@ -13,8 +13,7 @@ import { Skeleton } from '../../components/ui/Skeleton'
 import { Badge } from '../../components/ui/Badge'
 import { cn } from '../../lib/cn'
 import { priorityGroups } from '../../lib/sort'
-import { formatShortcut, isMacPlatform, matchKeyCombo, shouldIgnoreShortcut } from '../../lib/hotkeys'
-import { Kbd } from '../../components/ui/Kbd'
+import { matchKeyCombo, shouldIgnoreShortcut } from '../../lib/hotkeys'
 
 /* ============================================================
    Inbox — where raw thoughts live. One list screen drives three
@@ -40,18 +39,8 @@ function Highlight({ text, q }: { text: string; q: string }) {
   )
 }
 
-/* Phase 60 — single source of truth for the shortcut help overlay.
-   Specs run through formatShortcut so Mac users see ⌘K-style hints and
-   everyone else sees Ctrl+…; 'Mod' resolves per platform. */
-const SHORTCUT_HELP: Array<{ spec: string; label: string }> = [
-  { spec: 'Mod+k', label: 'Open command palette' },
-  { spec: 'n', label: 'New thought' },
-  { spec: '/', label: 'Focus search' },
-  { spec: '?', label: 'Toggle this help' },
-  { spec: 'Escape', label: 'Clear search / close overlays' },
-  { spec: 'Mod+s', label: 'Save draft in editor' },
-  { spec: 'Mod+Enter', label: 'Transform thought (editor)' },
-]
+/* Phase 61 — the shortcut table + help overlay moved to
+   components/ui/ShortcutHelpOverlay.tsx (single global source of truth). */
 
 const VIEW_META: Record<InboxView, { title: string; blurb: string; emptyTitle: string; emptyBody: string }> = {
   inbox: {
@@ -81,6 +70,9 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
   const transform = useAppStore((s) => s.transform)
   const deleteThought = useAppStore((s) => s.deleteThought)
   const setPalette = useAppStore((s) => s.setPalette)
+  /* Phase 61: help overlay open state moved to the store so the global
+     ShortcutHelpOverlay (mounted in App) owns it on every route. */
+  const setHelp = useAppStore((s) => s.setHelp)
   /* Phase 20 — multi-select (spec §35). Selection lives in the store so
      it survives view switches; actions act on ids, never indices. */
   const selectedIds = useAppStore((s) => s.selectedIds)
@@ -91,8 +83,9 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
   const reduced = useReducedMotion()
   const [query, setQuery] = useState('')
   const searchRef = useRef<HTMLInputElement>(null)
-  /* Phase 60 — "?" toggles the shortcut help overlay (view-local). */
-  const [helpOpen, setHelpOpen] = useState(false)
+  /* Phase 61 — "?" toggles the GLOBAL help overlay (store state, owned by
+     ShortcutHelpOverlay mounted in App). */
+  const paletteOpen = useAppStore((s) => s.paletteOpen)
 
   /* Hydration/loading state (QA §71): the persisted store rehydrates from
      localStorage a beat after first paint — show skeleton cards instead of
@@ -176,16 +169,15 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
          contenteditable hosts and in-flight IME compositions are now
          covered too. Escape still clears the query from anywhere,
          matching the pre-Phase-60 contract. */
-      if (matchKeyCombo(e, 'Escape', false)) { setQuery(''); setHelpOpen(false); return }
+      if (matchKeyCombo(e, 'Escape', false)) { setQuery(''); setHelp(false); return }
       if (shouldIgnoreShortcut(e.target, e)) return
       if (matchKeyCombo(e, '/', false)) { e.preventDefault(); searchRef.current?.focus() }
       else if (matchKeyCombo(e, 'n', false)) { e.preventDefault(); onNew() }
-      else if (matchKeyCombo(e, '?', false)) { e.preventDefault(); setHelpOpen((v) => !v) }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [paletteOpen])
 
   /* Palette "Search thoughts and outputs" hands the query to us (spec §33). */
   const searchQuery = useAppStore((s) => s.searchQuery)
@@ -475,7 +467,7 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
               <CornerDownLeft size={10} aria-hidden /> click a thought to open the editor · press N for a new one ·{' '}
               <button
                 type="button"
-                onClick={() => setHelpOpen(true)}
+                onClick={() => setHelp(true)}
                 className="underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-line"
               >
                 press ? for shortcuts
@@ -488,58 +480,8 @@ export function InboxPage({ view = 'inbox' }: { view?: InboxView }) {
       {/* Phase 20: floating bulk-action bar (spec §35) */}
       <BulkActionBar ids={visibleSelected} />
 
-      {/* Phase 60: shortcut help overlay — toggled with "?" (or the hint
-          line below), dismissed with Escape / backdrop click. Rendered in
-          a portal-free fixed layer; focus stays on the page so typing
-          guards keep working when it closes. */}
-      <AnimatePresence>
-        {helpOpen && (
-          <motion.div
-            initial={reduced ? false : { opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={reduced ? undefined : { opacity: 0 }}
-            transition={{ duration: 0.18 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Keyboard shortcuts"
-            onClick={() => setHelpOpen(false)}
-          >
-            <motion.div
-              initial={reduced ? false : { opacity: 0, y: 10, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={reduced ? undefined : { opacity: 0, y: 6, scale: 0.98 }}
-              transition={{ duration: 0.22, ease: [0.21, 0.6, 0.35, 1] }}
-              className="w-full max-w-sm rounded-xl border border-line bg-surface p-5 shadow-lg"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-sm font-semibold tracking-tight">Keyboard shortcuts</h2>
-                <button
-                  type="button"
-                  onClick={() => setHelpOpen(false)}
-                  aria-label="Close shortcut help"
-                  className="rounded-md p-1 text-ink-subtle hover:bg-sunken hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-line"
-                >
-                  <X size={14} aria-hidden />
-                </button>
-              </div>
-              <ul className="space-y-2">
-                {SHORTCUT_HELP.map(({ spec, label }) => (
-                  <li key={spec} className="flex items-center justify-between gap-4 text-sm">
-                    <span className="text-ink-muted">{label}</span>
-                    <Kbd keys={formatShortcut(spec, isMacPlatform()).split('+')} />
-                  </li>
-                ))}
-              </ul>
-              <p className="mt-4 font-mono text-3xs text-ink-subtle">
-                press {formatShortcut('?', isMacPlatform())} again to close
-              </p>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
+      {/* Phase 61: the shortcut help overlay moved to App.tsx so "?" works
+          on every route; this button stays as the discoverable entry. */}
       <button type="button" className="sr-only" onClick={() => setPalette(true)}>Open command palette</button>
     </div>
   )
