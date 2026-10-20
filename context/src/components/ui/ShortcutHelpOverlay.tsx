@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { X } from 'lucide-react'
 import { useAppStore } from '../../lib/store'
 import { useReducedMotion } from '../../hooks/useReducedMotion'
-import { formatShortcut, isMacPlatform, matchKeyCombo, shouldIgnoreShortcut } from '../../lib/hotkeys'
+import { formatShortcut, isMacPlatform, matchKeyCombo, resolveBinding, shouldIgnoreShortcut } from '../../lib/hotkeys'
 import { Kbd } from './Kbd'
 
 /* ============================================================
@@ -16,25 +16,30 @@ import { Kbd } from './Kbd'
    itself — with the shared typing guards from lib/hotkeys so it
    never fires while the user types into a field. Escape closes
    via the same window listener that already clears the palette.
+
+   Phase 63 — the table renders the EFFECTIVE spec for every
+   binding (user remap when set, shipped default otherwise), so
+   what the help advertises is always what actually fires.
    ============================================================ */
 
-/** Single source of truth for the shortcut table. Specs run through
- *  formatShortcut so Mac users see ⌘K-style hints and everyone else
- *  sees Ctrl+…; 'Mod' resolves per platform. */
-export const SHORTCUT_HELP: Array<{ spec: string; label: string }> = [
-  { spec: 'Mod+k', label: 'Open command palette' },
-  { spec: 'n', label: 'New thought' },
-  { spec: '/', label: 'Focus search' },
-  { spec: '?', label: 'Toggle this help' },
-  { spec: 'Escape', label: 'Clear search / close overlays' },
-  { spec: 'Mod+s', label: 'Save draft in editor' },
-  { spec: 'Mod+Enter', label: 'Transform thought (editor)' },
+/** Binding id ↔ help-table row. `spec` here is only the fallback
+ *  label source; live rows resolve through DEFAULT_KEYBINDINGS ids. */
+export const SHORTCUT_HELP: Array<{ id: string; label: string }> = [
+  { id: 'palette.toggle', label: 'Open command palette' },
+  { id: 'inbox.new', label: 'New thought' },
+  { id: 'inbox.search', label: 'Focus search' },
+  { id: 'help.toggle', label: 'Toggle this help' },
+  { id: 'help.close', label: 'Clear search / close overlays' },
+  { id: 'editor.save', label: 'Save draft in editor' },
+  { id: 'editor.transform', label: 'Transform thought (editor)' },
 ]
 
 export function ShortcutHelpOverlay() {
   const open = useAppStore((s) => s.helpOpen)
   const setHelp = useAppStore((s) => s.setHelp)
   const paletteOpen = useAppStore((s) => s.paletteOpen)
+  /* Phase 63: live remaps feed both the keydown matcher and the table. */
+  const keybindings = useAppStore((s) => s.keybindings)
   const reduced = useReducedMotion()
 
   /* Bare "?" toggles the overlay from any route. shouldIgnoreShortcut
@@ -45,21 +50,23 @@ export function ShortcutHelpOverlay() {
      mounted on every /app route (Phase 61). */
   useEffect(() => {
     if (typeof window === 'undefined') return
+    const toggleSpec = resolveBinding('help.toggle', keybindings)
+    const closeSpec = resolveBinding('help.close', keybindings)
     const onKey = (e: KeyboardEvent) => {
       if (paletteOpen) return
-      if (open && matchKeyCombo(e, 'Escape', false)) {
+      if (open && matchKeyCombo(e, closeSpec, false)) {
         e.preventDefault()
         setHelp(false)
         return
       }
-      if (e.key !== '?') return
+      if (!matchKeyCombo(e, toggleSpec, false)) return
       if (shouldIgnoreShortcut(e.target, e)) return
       e.preventDefault()
       setHelp(!open)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [open, paletteOpen, setHelp])
+  }, [open, paletteOpen, setHelp, keybindings])
 
   return (
     <AnimatePresence>
@@ -95,15 +102,15 @@ export function ShortcutHelpOverlay() {
               </button>
             </div>
             <ul className="space-y-2">
-              {SHORTCUT_HELP.map(({ spec, label }) => (
-                <li key={spec} className="flex items-center justify-between gap-4 text-sm">
+              {SHORTCUT_HELP.map(({ id, label }) => (
+                <li key={id} className="flex items-center justify-between gap-4 text-sm">
                   <span className="text-ink-muted">{label}</span>
-                  <Kbd keys={formatShortcut(spec, isMacPlatform()).split('+')} />
+                  <Kbd keys={formatShortcut(resolveBinding(id, keybindings) ?? '', isMacPlatform()).split('+')} />
                 </li>
               ))}
             </ul>
             <p className="mt-4 font-mono text-3xs text-ink-subtle">
-              press {formatShortcut('?', isMacPlatform())} again to close
+              press {formatShortcut(resolveBinding('help.toggle', keybindings) ?? '?', isMacPlatform())} again to close
             </p>
           </motion.div>
         </motion.div>

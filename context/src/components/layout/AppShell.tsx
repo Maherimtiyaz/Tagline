@@ -24,7 +24,7 @@ import { useThemeStore } from '../../lib/theme'
 import { COLLECTIONS } from '../../data/mock'
 import { Kbd } from '../ui/Kbd'
 import { cn } from '../../lib/cn'
-import { formatShortcut, isMacPlatform, matchKeyCombo } from '../../lib/hotkeys'
+import { formatShortcut, isMacPlatform, matchKeyCombo, resolveBinding } from '../../lib/hotkeys'
 
 /* ============================================================
    App shell — collapsible sidebar + routed content. Mobile
@@ -65,6 +65,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const setPalette = useAppStore((s) => s.setPalette)
   const togglePalette = useAppStore((s) => s.togglePalette)
   const resetDemo = useAppStore((s) => s.resetDemo)
+  /* Phase 63: user-remappable palette spec (default 'Mod+k'). */
+  const paletteSpec = useAppStore((s) => resolveBinding('palette.toggle', s.keybindings))
   const theme = useThemeStore((s) => s.theme)
   const toggleTheme = useThemeStore((s) => s.toggleTheme)
   const navigate = useNavigate()
@@ -80,14 +82,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     if (typeof window === 'undefined') return
     const mac = isMacPlatform()
     const onKey = (e: KeyboardEvent) => {
-      if (matchKeyCombo(e, 'Mod+k', mac)) {
+      if (matchKeyCombo(e, paletteSpec, mac)) {
         e.preventDefault()
         togglePalette()
       }
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [togglePalette])
+  }, [togglePalette, paletteSpec])
 
   const rawCount = thoughts.filter((t) => t.status === 'raw').length
   const draftCount = thoughts.filter((t) => t.status !== 'archived' && (t.text.trim() === '' || (t.status === 'raw' && t.outputs.length === 0))).length
@@ -286,8 +288,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             {!collapsed && (
               <>
                 <span className="flex-1 text-left">Commands</span>
-                {/* Phase 60: platform-aware — ⌘K on Mac, Ctrl+K elsewhere. */}
-                <Kbd keys={[formatShortcut('Mod+k', isMacPlatform())]} />
+                {/* Phase 60: platform-aware — ⌘K on Mac, Ctrl+K elsewhere.
+                    Phase 63: reflects the user's remap when one is set. */}
+                <Kbd keys={[formatShortcut(paletteSpec ?? 'Mod+k', isMacPlatform())]} />
               </>
             )}
           </button>

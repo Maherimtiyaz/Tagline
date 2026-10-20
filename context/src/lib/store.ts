@@ -15,6 +15,7 @@ import type {
 import { COLLECTIONS, SEED_THOUGHTS, SEED_TIMELINE } from '../data/mock'
 import type { DigestComparison } from './analytics'
 import { compareDigestWeeks } from './analytics'
+import { DEFAULT_KEYBINDINGS, validateRemapSet } from './hotkeys'
 import {
   addWeeks,
   analyzeThought,
@@ -353,6 +354,42 @@ function writeDrafts(map: DraftMap): void {
   }
 }
 
+/* ---- Phase 63: user-customizable keybindings ---------------------------
+   Remaps live in their own localStorage key, deliberately OUTSIDE the
+   persisted domain envelope (same policy as Phase-34 drafts): keybindings
+   are a per-device preference — they never cross-tab sync and they survive
+   `resetDemo`. Corrupt payloads and structurally-invalid/colliding sets
+   degrade to shipped defaults. */
+
+const KEYMAP_KEY = 'context-demo-keybindings-v1'
+
+export type Keymap = Record<string, string>
+
+/** Read + sanitize the persisted remap map. Only entries that exist in
+ *  DEFAULT_KEYBINDINGS, pass isValidKeySpec, and differ from the default
+ *  are kept; anything else drops the WHOLE set (defaults win). */
+function readKeymap(): Keymap {
+  try {
+    const raw = safeStorage.getItem(KEYMAP_KEY)
+    if (!raw) return {}
+    const parsed: unknown = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    const validated = validateRemapSet(parsed as Record<string, unknown>)
+    return validated ?? {}
+  } catch {
+    return {}
+  }
+}
+
+function writeKeymap(map: Keymap): void {
+  try {
+    if (Object.keys(map).length === 0) safeStorage.removeItem(KEYMAP_KEY)
+    else safeStorage.setItem(KEYMAP_KEY, JSON.stringify(map))
+  } catch {
+    /* quota / private mode — remap degrades silently, defaults still work */
+  }
+}
+
 interface AppState {
   thoughts: Thought[]
   timeline: TimelineEvent[]
@@ -362,6 +399,8 @@ interface AppState {
   paletteOpen: boolean
   /** Phase 61: global "?" shortcut-help overlay (transient UI state). */
   helpOpen: boolean
+  /** Phase 63: user remaps only — empty means pure shipped defaults. */
+  keybindings: Keymap
   toasts: Toast[]
   inboxView: InboxView
   /** Global search query — empty means no active search (spec §33). */
@@ -381,6 +420,13 @@ interface AppState {
   /** Phase 61: open/close the global shortcut help overlay. */
   setHelp: (open: boolean) => void
   toggleHelp: () => void
+  /** Phase 63: remap a binding id to a new key spec. Returns false when
+   *  the resulting set is invalid or collides (state untouched). */
+  setKeybinding: (id: string, spec: string) => boolean
+  /** Phase 63: restore one binding to its shipped default. */
+  resetKeybinding: (id: string) => void
+  /** Phase 63: restore every binding to shipped defaults. */
+  resetAllKeybindings: () => void
   setInboxView: (view: InboxView) => void
   dismissOnboarding: () => void
   /** Re-show the first-run welcome card (Settings → Replay welcome tour). */
@@ -568,6 +614,9 @@ export const useAppStore = create<AppState>()(
       selectedIds: [],
       paletteOpen: false,
       helpOpen: false,
+      /* Phase 63: hydrate remaps from their own storage key (outside the
+         persisted envelope) so they survive refresh AND resetDemo. */
+      keybindings: readKeymap(),
       toasts: [],
       inboxView: 'inbox',
       searchQuery: '',
@@ -892,6 +941,30 @@ export const useAppStore = create<AppState>()(
          or cross-tab synced (same policy as paletteOpen). */
       setHelp: (open) => set({ helpOpen: open }),
       toggleHelp: () => set((s) => ({ helpOpen: !s.helpOpen })),
+      /* Phase 63 — keybinding remaps. Validation happens against the
+         candidate merged set; an invalid or colliding remap is rejected
+         wholesale (returns false, state untouched). Successful writes
+         persist to the standalone KEYMAP_KEY (never the domain envelope). */
+      setKeybinding: (id, spec) => {
+        if (!(id in DEFAULT_KEYBINDINGS)) return false
+        const next = { ...get().keybindings, [id]: spec }
+        const validated = validateRemapSet(next)
+        if (validated === null) return false
+        set({ keybindings: validated })
+        writeKeymap(validated)
+        return true
+      },
+      resetKeybinding: (id) => {
+        if (!(id in DEFAULT_KEYBINDINGS)) return
+        const next = { ...get().keybindings }
+        delete next[id]
+        set({ keybindings: next })
+        writeKeymap(next)
+      },
+      resetAllKeybindings: () => {
+        set({ keybindings: {} })
+        writeKeymap({})
+      },
       setInboxView: (view) => set({ inboxView: view }),
       dismissOnboarding: () => set({ onboardingSeen: true }),
       showOnboarding: () => set({ onboardingSeen: false }),
